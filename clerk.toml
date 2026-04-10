@@ -1,0 +1,10 @@
+[project]
+include_dirs = []
+build_dir = "formalizations/_build"
+target_dir = "formalizations/_target"
+
+[[target]]
+name = "ip-transfer-rules"
+modules = []
+tests = []
+backends = ["python"]

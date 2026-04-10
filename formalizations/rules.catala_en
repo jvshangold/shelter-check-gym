@@ -1,0 +1,49 @@
+## EntityId's encode what entity another entity is pointing to
+```catala
+declaration enumeration EntityId:
+  -- E1
+  -- E2
+  -- E3
+  -- E4
+  -- E5
+  -- E6
+  -- E7
+  -- E8
+  -- E9
+  -- E10
+```
+
+```catala
+declaration enumeration IPId:
+  -- IP1
+  -- IP2
+  -- IP3
+```
+
+```catala
+declaration structure Entity:
+  data id content EntityId
+  data revenue content money
+  data incorporation_jurisdiction content Jurisdiction
+  data managememnt_jurisidiction content Jurisdiction
+```
+
+```catala
+declaration enumeration Jurisdiction:
+  -- Ireland
+  -- Bermuda
+  -- Netherlands
+  -- US
+  -- Germany
+```
+
+
+
+```catala
+declaration scope EntityTax:
+  input entity content Entity
+  
+  output entity_tax content money
+    state base
+    state with_deduction
+```

@@ -1,0 +1,16 @@
+# ninja log v7
+4	16	1775812945879933037	formalizations/_build/libcatala/decimal_internal.catala_en	c2f2979eee255770
+4	17	1775812945880052869	formalizations/_build/libcatala/money_internal.catala_en	5ba00a21a59c7138
+4	17	1775812945880168826	formalizations/_build/libcatala/period_internal.catala_en	9c197ed455ce9bc2
+3	17	1775812945879550541	formalizations/_build/libcatala/list_internal.catala_en	964f7005b841dc64
+3	17	1775812945879794955	formalizations/_build/libcatala/date_internal.catala_en	eb9b0fdcf6211953
+4	17	1775812945880538531	formalizations/_build/libcatala/duration_en.catala_en	e23389f3867d733b
+4	17	1775812945880855653	formalizations/_build/libcatala/integer_en.catala_en	cfff638a1d241ed1
+17	20	1775812945892876747	formalizations/_build/libcatala/money_en.catala_en	b490b9162c07c8a7
+16	20	1775812945892725290	formalizations/_build/libcatala/decimal_en.catala_en	95fe5a695f79f64e
+17	20	1775812945893004454	formalizations/_build/libcatala/list_en.catala_en	81e13e30d5b8c29b
+20	24	1775812945896669502	formalizations/_build/libcatala/date_en.catala_en	b485342991afc982
+24	27	1775812945900226010	formalizations/_build/libcatala/monthyear_en.catala_en	af8075662b57f508
+24	27	1775812945900335176	formalizations/_build/libcatala/period_en.catala_en	366e910cfec158d4
+27	31	1775812945903701060	formalizations/_build/libcatala/stdlib_en.catala_en	c850cc52da2b503c
+31	34	1775812945907165611	formalizations/_build/formalizations/rules.catala_en	d8a2bc07691c11fc
