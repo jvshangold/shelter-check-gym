@@ -1,4 +1,4 @@
-Module TaxModel
+> Module TaxModel
 
 ```catala
 declaration structure Entity:
@@ -22,9 +22,6 @@ declaration enumeration Jurisdiction:
   -- Netherlands
   -- US
   -- France
-
-declaration structure EntityTaxResult:
-  data total_tax content money
 
 declaration structure EntityTaxInput:
   data entity content Entity

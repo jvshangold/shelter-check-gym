@@ -1,6 +1,5 @@
-Module TaxModel
+> Module TaxModel
 
-## EntityId's encode what entity another entity is pointing to
 ```catala
 declaration structure Entity:
   data incorporation_jurisdiction content Jurisdiction
@@ -23,6 +22,11 @@ declaration enumeration Jurisdiction:
   -- Netherlands
   -- US
   -- France
+
+declaration structure EntityTaxInput:
+  data entity content Entity
+  data gross_revenue content money
+  data outgoing_payments content list of Payment
 
 declaration scope CorporateTaxComputation:
   input entity content Entity
@@ -48,6 +52,9 @@ declaration scope EntityTaxOutcome:
 
   output total_tax content money
 
+declaration scope GroupTaxOutcome:
+  input entity_inputs content list of EntityTaxInput
+  output total_group_tax content money
 ```
 
 
@@ -133,6 +140,18 @@ scope EntityTaxOutcome:
 scope EntityTaxOutcome:
   definition total_tax equals
     corporate_tax_computation.tax_due + withholding_tax
+```
+
+```catala
+scope GroupTaxOutcome:
+  definition total_group_tax equals
+    Money.sum of
+      map each entity_input among entity_inputs to
+        (output of EntityTaxOutcome with {
+          -- entity: entity_input.entity
+          -- gross_revenue: entity_input.gross_revenue
+          -- outgoing_payments: entity_input.outgoing_payments
+        }).total_tax
 ```
 
 ```catala

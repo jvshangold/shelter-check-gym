@@ -1,10 +1,9 @@
 [project]
-include_dirs = []
+include_dirs = ["formalizations/"]
 build_dir = "formalizations/_build"
 target_dir = "formalizations/_target"
 
 [[target]]
-name = "ip-transfer-rules"
-modules = []
-tests = []
+name = "tax-rules"
+modules = ["TaxModel"]
 backends = ["python"]
