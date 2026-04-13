@@ -1,49 +1,74 @@
+Module TaxModel
+
 ## EntityId's encode what entity another entity is pointing to
 ```catala
-declaration enumeration EntityId:
-  -- E1
-  -- E2
-  -- E3
-  -- E4
-  -- E5
-  -- E6
-  -- E7
-  -- E8
-  -- E9
-  -- E10
-```
-
-```catala
-declaration enumeration IPId:
-  -- IP1
-  -- IP2
-  -- IP3
-```
-
-```catala
 declaration structure Entity:
-  data id content EntityId
-  data revenue content money
   data incorporation_jurisdiction content Jurisdiction
-  data managememnt_jurisidiction content Jurisdiction
-```
+  data tax_residence content Jurisdiction
 
-```catala
+declaration enumeration PaymentKind:
+  -- Royalty
+  -- Dividen
+  -- ServiceFee
+
+declaration structure Payment:
+  data payer content Entity
+  data receiver content Entity
+  data amount content money
+  data kind content PaymentKind
+
 declaration enumeration Jurisdiction:
   -- Ireland
   -- Bermuda
   -- Netherlands
   -- US
-  -- Germany
+
+declaration scope CorporateTaxComputation:
+  input entity content Entity
+  input gross_revenue content money
+  input deductible_payments content money
+  internal tax_base content money
+  internal tax_rate content decimal
+  output tax_due content money
+
 ```
 
 
 
 ```catala
-declaration scope EntityTax:
-  input entity content Entity
+scope CorporateTaxComputation:
+  definition tax_base equals
+    if gross_revenue - deductible_payments <= $0 then
+      $0
+    else gross_revenue - deductible_payments
+
+scope CorporateTaxComputation:
+  definition tax_rate equals
+    match entity.tax_residence with pattern
+      -- Ireland: 12.5%
+      -- Netherlands: 25.8%
+      -- Bermuda: 0%
+      -- US: 21%
   
-  output entity_tax content money
-    state base
-    state with_deduction
+scope CorporateTaxComputation:
+  definition tax_due equals
+    tax_base * tax_rate
+```
+
+```catala
+declaration scope TestCorporateTaxComputation:
+  output computation content CorporateTaxComputation
+
+scope TestCorporateTaxComputation:
+  definition computation equals
+    output of CorporateTaxComputation with {
+      -- entity: 
+        Entity {
+          -- incorporation_jurisdiction: Ireland
+          -- tax_residence: Ireland
+        }
+      -- gross_revenue: $100
+      -- deductible_payments: $90
+    }
+
 ```
