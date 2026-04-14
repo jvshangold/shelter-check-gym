@@ -42,7 +42,7 @@ class Jurisdiction_Code(Enum):
     Bermuda = 1
     Netherlands = 2
     US = 3
-    France = 4
+    Germany = 4
 
 class Jurisdiction:
     def __init__(self, code: Jurisdiction_Code, value: Any) -> None:
@@ -359,8 +359,8 @@ def corporate_tax_computation(corporate_tax_computation_in:CorporateTaxComputati
         tax_rate = (decimal_of_string("129/500"))
     elif tax_rate__1.code == Jurisdiction_Code.US:
         tax_rate = (decimal_of_string("21/100"))
-    elif tax_rate__1.code == Jurisdiction_Code.France:
-        tax_rate = (decimal_of_string("1/4"))
+    elif tax_rate__1.code == Jurisdiction_Code.Germany:
+        tax_rate = (decimal_of_string("3/20"))
     def deductible_payments__1(payment:Payment):
         deductible_payments__3 = (payment.kind)
         if deductible_payments__3.code == PaymentKind_Code.Royalty:

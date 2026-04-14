@@ -21,7 +21,7 @@ declaration enumeration Jurisdiction:
   -- Bermuda
   -- Netherlands
   -- US
-  -- France
+  -- Germany
 
 declaration structure EntityTaxInput:
   data entity content Entity
@@ -81,7 +81,7 @@ scope CorporateTaxComputation:
       -- Netherlands: 25.8%
       -- Bermuda: 0%
       -- US: 21%
-      -- France: 25%
+      -- Germany: 15%
   
 scope CorporateTaxComputation:
   definition tax_due equals

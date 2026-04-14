@@ -241,3 +241,5 @@
 16	45	1776088431563618181	formalizations/_build/libcatala/python/Stdlib_en.py	e2dcce61ca8bdfb9
 15	45	1776088431562652084	formalizations/_build/libcatala/python/Period_en.py	72b3f4dfc55586b4
 19	50	1776088431567096524	formalizations/_build/formalizations/python/TaxModel.py	e2ac008074e692ea
+10	15	1776175780890489107	formalizations/_build/formalizations/TaxModel.catala_en	5220d39d97390f80
+15	99	1776175780896332317	formalizations/_build/formalizations/python/TaxModel.py	540922439638f5eb
