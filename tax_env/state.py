@@ -91,24 +91,21 @@ class WorldState:
         entity = self.entities[entity_id]
         country = entity.incorporation_jurisdiction
 
-        has_ip_rights = entity_id in self.licenses
+        eligible = [
+            e_id
+            for e_id, e in self.entities.items()
+            if e.incorporation_jurisdiction == country and self.has_ip_rights(e_id)
+        ]
 
-        if not has_ip_rights:
+        if entity_id not in eligible:
             return 0.0
 
-        return self.country_revenue[country]
+        if not eligible:
+            return 0.0
+
+        return self.country_revenue[country] / len(eligible)
     
-    def get_royalty_flows(self) -> list[tuple[str, str, float]]:
-        if self.ip_owner is None:
-            raise ValueError("No IP owner set")
-        
-        flows = []
 
-        for licensee, owner in self.licenses.items():
-            revenue = self.get_company_revenue(licensee)
-            royalty = self.royalty_rate * revenue
-
-            if royalty > 0:
-                flows.append((licensee, owner, royalty))
-        
-        return flows
+    def has_ip_rights(self, entity_id: str) -> bool:
+        '''Helper to be used to divide revenue coming from a country'''
+        return entity_id in self.licenses
