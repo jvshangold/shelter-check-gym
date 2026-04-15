@@ -8,6 +8,7 @@ Jurisdiction = Literal["Ireland", "Netherlands", "Bermuda", "US", "Germany"]
 class Entity:
     id: str
     incorporation_jurisdiction: Jurisdiction  # = operating location
+    management_jurisdiction: Jurisdiction # = management location
     tax_residence: Jurisdiction
     parent_id: Optional[str] = None
 
@@ -18,7 +19,7 @@ class WorldState:
     subsidiary: set[tuple[str, str]] = field(default_factory=set)
     licenses: Dict[str, str] = field(default_factory=dict)  # licensee -> licensor
     ip_owner: Optional[str] = None
-    _next_entity_id: int = 0
+    _next_entity_id: int = 1
 
     country_revenue: Dict[Jurisdiction, float] = field(default_factory=lambda: {
         "US": 700_000_000.0,
@@ -34,6 +35,7 @@ class WorldState:
         self,
         parent: str,
         incorporation_jurisdiction: Jurisdiction,
+        management_jurisdiction: Jurisdiction,
         tax_residence: Jurisdiction,
     ) -> str:
         if parent not in self.entities:
@@ -45,6 +47,7 @@ class WorldState:
         child = Entity(
             id=child_id,
             incorporation_jurisdiction=incorporation_jurisdiction,
+            management_jurisdiction=management_jurisdiction,
             tax_residence=tax_residence,
             parent_id=parent,
         )
@@ -108,4 +111,4 @@ class WorldState:
 
     def has_ip_rights(self, entity_id: str) -> bool:
         '''Helper to be used to divide revenue coming from a country'''
-        return entity_id in self.licenses
+        return entity_id in self.licenses or entity_id == self.ip_owner

@@ -1,7 +1,7 @@
 from torch_geometric.data import HeteroData
 import torch
 
-from state import WorldState
+from .state import WorldState
 
 def build_graph(state: WorldState):
     '''
@@ -27,6 +27,7 @@ def build_graph(state: WorldState):
     has_subsidiary = [] # entity x -> has subsidiary y
     licenses_from = [] # licensee -> owner
     incorporated_in = [] # x is incorporated in J
+    managed_from = [] # x is managed from J
     tax_residence = [] # x pays taxes in J
 
     for eid in entity_ids:
@@ -48,6 +49,9 @@ def build_graph(state: WorldState):
         
         # incorporated connectivity
         incorporated_in.append([entity_i, jurisdiction_vocab[ent.incorporation_jurisdiction]])
+
+        # managed connectivity
+        managed_from.append([entity_i, jurisdiction_vocab[ent.management_jurisdiction]])
 
         # tax_residence connectivity
         tax_residence.append([entity_i, jurisdiction_vocab[ent.tax_residence]])
@@ -71,6 +75,7 @@ def build_graph(state: WorldState):
         data["entity", "licenses_from", "entity"].edge_index = torch.zeros((2, 0), dtype=torch.long)
     
     data["entity", "incorporated_in", "jurisdiction"].edge_index = torch.tensor(incorporated_in, dtype=torch.long).t().contiguous()
+    data["entity", "managed_from", "jurisdiction"].edge_index = torch.tensor(managed_from, dtype=torch.long).t().contiguous()
     data["entity", "tax_resident_of", "jurisdiction"].edge_index = torch.tensor(tax_residence, dtype=torch.long).t().contiguous()
 
     return data
