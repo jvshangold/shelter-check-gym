@@ -60,7 +60,7 @@ def build_graph(state: WorldState):
     
     data["entity"].x = torch.tensor(entity_x, dtype=torch.float)
 
-    data["jurisidction"].x = torch.arange(len(jurisdiction_vocab), dtype=torch.float).unsqueeze(1)
+    data["jurisdiction"].x = torch.arange(len(jurisdiction_vocab), dtype=torch.float).unsqueeze(1)
 
     # load subsidiary graph connectivity matrix
     if has_subsidiary:
@@ -75,7 +75,7 @@ def build_graph(state: WorldState):
         data["entity", "licenses_from", "entity"].edge_index = torch.zeros((2, 0), dtype=torch.long)
     
     data["entity", "incorporated_in", "jurisdiction"].edge_index = torch.tensor(incorporated_in, dtype=torch.long).t().contiguous()
-    data["entity", "managed_from", "jurisdiction"].edge_index = torch.tensor(managed_from, dtype=torch.long).t().contiguous()
     data["entity", "tax_resident_of", "jurisdiction"].edge_index = torch.tensor(tax_residence, dtype=torch.long).t().contiguous()
+    data["entity", "managed_from", "jurisdiction"].edge_index = torch.tensor(managed_from, dtype=torch.long).t().contiguous()
 
     return data
