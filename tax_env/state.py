@@ -112,3 +112,11 @@ class WorldState:
     def has_ip_rights(self, entity_id: str) -> bool:
         '''Helper to be used to divide revenue coming from a country'''
         return entity_id in self.licenses or entity_id == self.ip_owner
+    
+    def get_tax_residence(self, incorporation_jurisdiction, management_jurisdiction):
+        eu_countries = {"Ireland", "Netherlands", "Germany"}
+
+        if incorporation_jurisdiction in eu_countries:
+            return incorporation_jurisdiction
+        else:
+            return management_jurisdiction

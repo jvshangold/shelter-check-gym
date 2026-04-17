@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import HeteroConv, SAGEConv, global_mean_pool
 
