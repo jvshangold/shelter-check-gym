@@ -120,3 +120,16 @@ class WorldState:
             return incorporation_jurisdiction
         else:
             return management_jurisdiction
+        
+
+    def add_root(self,
+                entity_id: Entity,
+                incorporation_jurisdiction: Jurisdiction,
+                management_jurisdiction: Jurisdiction,
+                tax_residence: Jurisdiction):
+        
+        self.entities[entity_id] = Entity(incorporation_jurisdiction, 
+                                            management_jurisdiction,
+                                            tax_residence)
+        self.ip_owner = entity_id
+        return entity_id

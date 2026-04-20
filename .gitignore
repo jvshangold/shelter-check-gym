@@ -2,7 +2,8 @@ shelter-check-gym.pdf
 __pycache__/
 *.pyc
 .vscode/
-.DS_Store
+*/.DS_Store
 *.pt
 .pytest_cache
+.DS_Store
 
