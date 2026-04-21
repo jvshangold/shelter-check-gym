@@ -128,7 +128,7 @@ class WorldState:
                 management_jurisdiction: Jurisdiction,
                 tax_residence: Jurisdiction):
         
-        self.entities[entity_id] = Entity(incorporation_jurisdiction, 
+        self.entities[entity_id] = Entity(entity_id, incorporation_jurisdiction, 
                                             management_jurisdiction,
                                             tax_residence)
         self.ip_owner = entity_id

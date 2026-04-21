@@ -35,7 +35,7 @@ class TaxEnv(gym.Env):
                                                     2: "Bermuda", 
                                                     3: "US", 
                                                     4: "Germany"}
-        self.prev_profit = 0
+        self.prev_profit = catala_runtime.Money(0)
     
     def step(self, action):
         action_type, arg_1, arg_2, arg_3, arg_4 = action
@@ -82,7 +82,7 @@ class TaxEnv(gym.Env):
         obs = self.get_observation()
         info = {}
         
-        steps += 1
+        self.steps += 1
         
         # check for truncation
         if self.steps >= self.max_steps:
@@ -145,82 +145,103 @@ class TaxEnv(gym.Env):
 
         return mask
     
-    # below is all of the catala code and helper functions to compute the reward for a new state
-    
     def compute_reward(self):
-        profit =  self.compute_profit() - self.prev_profit
-        self.prev_profit = profit
-        return profit
+        current_profit = self.compute_profit()
+        reward = current_profit - self.prev_profit
+        self.prev_profit = current_profit
+        return reward
 
     def compute_profit(self):
-
-        # list of entity inputs to be used in TaxModel.EntityTaxOutcome
         entity_inputs: List[TaxModel.EntityTaxInput] = []
+        payment_dict: Dict[str, List[TaxModel.Payment]] = {
+            entity_id: [] for entity_id in self.state.entities
+        }
 
-        # dictionary to map entity to the payments it must make
-        payment_dict: Dict[str, List[TaxModel.Payment]] = dict()
+        total_revenue = 0
 
-        profit = 0
+        for entity_id, entity in self.state.entities.items():
+            payer_catala_entity = self.make_entity(
+                entity.incorporation_jurisdiction,
+                entity.tax_residence
+            )
 
-        for entity_id, entity in self.state.entites.items():
-            incorporation_jurisdiction = self.make_jurisdiction(entity.incorporation_jurisdiction)
-            tax_residence = self.make_jurisdiction(entity.tax_residence)
-            
-            catala_entity = self.make_entity(entity.incorporation_jurisdiction, entity.tax_residence)
-            
-            # get revenue
             revenue = self.state.get_company_revenue(entity_id)
+            total_revenue += round(revenue)
 
-            # keep accumulating profit for later
-            profit += revenue
-            
-            # logic to make outgoing payments list with licensing graph
             if entity_id in self.state.licenses:
-                prev = catala_entity
+                prev_id = entity_id
+                prev_catala_entity = payer_catala_entity
+                cur_payment = 0.9 * revenue
+                cur_licensor_id = self.state.licenses[entity_id]
 
-                cur_licensor = self.state.licenses[entity_id]
-                cur_payment = .9 * revenue
+                while True:
+                    licensor_entity = self.state.entities[cur_licensor_id]
+                    licensor_catala_entity = self.make_entity(
+                        licensor_entity.incorporation_jurisdiction,
+                        licensor_entity.tax_residence
+                    )
 
-                while cur_licensor in self.state.licenses:
-                    # get new jurisdictions for catala
-                    incorporation_jurisdiction = self.make_jurisdiction(entity.incorporation_jurisdiction)
-                    tax_residence = self.make_jurisdiction(entity.tax_residence)
-                    cur_licensor_catala = self.make_entity(incorporation_jurisdiction, tax_residence)
+                    payment = self.make_payment(
+                        prev_catala_entity,
+                        licensor_catala_entity,
+                        catala_runtime.Money(catala_runtime.Integer(round(cur_payment))),
+                        self.make_payment_kind("Royalty"),
+                    )
+                    payment_dict[prev_id].append(payment)
 
-                    # add the payment to outgoing payments for correct entity_id
-                    amount = catala_runtime.Money(round(cur_payment))
-                    payment = self.make_payment(prev, cur_licensor_catala, amount, self.make_payment_kind("Royalty"))
-                    payment_dict[cur_licensor].append(payment)
+                    if cur_licensor_id not in self.state.licenses:
+                        break
 
-                    prev = cur_licensor_catala
-                    cur_payment *= .9      
-            
-        for entity_id, entity in self.state.entities.items():    
-            outgoing_payments = payment_dict[entity_id]
-            incorporation_jurisdiction = self.make_jurisdiction(entity.incorporation_jurisdiction)
-            tax_residence = self.make_jurisdiction(entity.tax_residence)
-            catala_entity = self.make_entity(incorporation_jurisdiction, tax_residence)
+                    prev_id = cur_licensor_id
+                    prev_catala_entity = licensor_catala_entity
+                    cur_licensor_id = self.state.licenses[cur_licensor_id]
+                    cur_payment *= 0.9
+
+        for entity_id, entity in self.state.entities.items():
+            catala_entity = self.make_entity(
+                entity.incorporation_jurisdiction,
+                entity.tax_residence
+            )
+
             revenue = self.state.get_company_revenue(entity_id)
 
+            entity_inputs.append(
+                TaxModel.EntityTaxInput(
+                    entity=catala_entity,
+                    gross_revenue=catala_runtime.Money(catala_runtime.Integer(round(revenue))),
+                    outgoing_payments=payment_dict[entity_id],
+                )
+            )
 
-            entity_tax_input = TaxModel.EntityTaxInput(catala_entity, revenue, outgoing_payments)
-            
-            entity_inputs.append(entity_tax_input)
+        total_group_tax = TaxModel.group_tax_outcome(
+            TaxModel.GroupTaxOutcomeIn(entity_inputs_in=entity_inputs)
+        ).total_group_tax
 
-        # call TaxModel.GroupTaxOutcome
-        total_taxes = TaxModel.GroupTaxOutcome(entity_inputs)
+        return catala_runtime.Money(catala_runtime.Integer(total_revenue)) - total_group_tax
+    
+    def make_jurisdiction(self, jurisdiction: str):
+        return TaxModel.Jurisdiction(
+            getattr(TaxModel.Jurisdiction_Code, jurisdiction),
+            catala_runtime.Unit()
+        )
 
-        return profit - total_taxes
-    
-    def make_jurisdiction(self, name: str):
-        return TaxModel.Jurisdiction(TaxModel.Jurisdiction_Code[name], None)
-    
-    def make_entity(self, incorporation_jurisdiction, tax_residence):
-        return TaxModel.Entity(incorporation_jurisdiction, tax_residence)
-    
-    def make_payment_kind(self, name: str):
-        return TaxModel.PaymentKind(TaxModel.PaymentKind_Code[name], None)
-    
+    def make_payment_kind(self, kind: str):
+        return TaxModel.PaymentKind(
+            getattr(TaxModel.PaymentKind_Code, kind),
+            catala_runtime.Unit()
+        )
+
+    def make_entity(self, incorporation_jurisdiction: str, tax_residence: str):
+        return TaxModel.Entity(
+            incorporation_jurisdiction=self.make_jurisdiction(incorporation_jurisdiction),
+            tax_residence=self.make_jurisdiction(tax_residence),
+        )
+
     def make_payment(self, payer, receiver, amount, kind):
-        return TaxModel.Payment(payer, receiver, amount, kind)
+        return TaxModel.Payment(
+            payer=payer,
+            receiver=receiver,
+            amount=amount,
+            kind=kind,
+        )
     

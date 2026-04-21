@@ -3,6 +3,7 @@ import pytest
 from tax_env.render import build_graph
 from tax_env.state import WorldState, Entity
 from tax_env.model import GNN
+from tax_env.env import TaxEnv
 
 # write test to add root and test revenue
 def test_revenue():
@@ -92,3 +93,31 @@ def test_GNN_dims():
     data = build_graph(state=state)
     model = GNN(64, 32)
     model(data)
+
+def test_initialize_env():
+    # create a state
+    env = TaxEnv(hidden_dim=52)
+    env.reset()
+
+def test_take_step():
+    # create a state
+    env = TaxEnv(hidden_dim=52)
+    env.reset()
+
+    # step add child
+    action = (0, 0, 0, 2, 0)
+    env.step(action=action)
+
+def test_compute_profit():
+    env = TaxEnv(hidden_dim=52)
+    env.reset()
+
+    env.step((0, 0, 0, 2, 0))  # add child
+    env.step((1, 1, 0, 0, 0))  # license to child
+
+    profit = env.compute_profit()
+
+    assert profit is not None
+
+
+
