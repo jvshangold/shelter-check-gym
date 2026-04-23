@@ -16,17 +16,17 @@ class GNN(torch.nn.Module):
         self.conv1 = HeteroConv({
             ("entity", "has_subsidiary", "entity"): SAGEConv((-1, -1), hidden_channels),
             ("entity", "licenses_from", "entity"): SAGEConv((-1, -1), hidden_channels),
-            ("entity", "incorporated_in", "entity"): SAGEConv((-1, -1), hidden_channels),
-            ("entity", "tax_resident_of", "entity"): SAGEConv((-1, -1), hidden_channels),
-            ("entity", "managed_from", "entity"): SAGEConv((-1, -1), hidden_channels)
+            ("entity", "incorporated_in", "jurisdiction"): SAGEConv((-1, -1), hidden_channels),
+            ("entity", "tax_resident_of", "jurisdiction"): SAGEConv((-1, -1), hidden_channels),
+            ("entity", "managed_from", "jurisdiction"): SAGEConv((-1, -1), hidden_channels)
         }, aggr='sum')
         
         self.conv2 = HeteroConv({
             ("entity", "has_subsidiary", "entity"): SAGEConv((-1, -1), out_channels),
             ("entity", "licenses_from", "entity"): SAGEConv((-1, -1), out_channels),
-            ("entity", "incorporated_in", "entity"): SAGEConv((-1, -1), out_channels),
-            ("entity", "tax_resident_of", "entity"): SAGEConv((-1, -1), out_channels),
-            ("entity", "managed_from", "entity"): SAGEConv((-1, -1), out_channels)
+            ("entity", "incorporated_in", "jurisdiction"): SAGEConv((-1, -1), out_channels),
+            ("entity", "tax_resident_of", "jurisdiction"): SAGEConv((-1, -1), out_channels),
+            ("entity", "managed_from", "jurisdiction"): SAGEConv((-1, -1), out_channels)
         }, aggr='sum')
         
     def forward(self, data):
@@ -40,7 +40,12 @@ class GNN(torch.nn.Module):
         x_dict = self.conv2(x_dict, data.edge_index_dict)
         x_dict = {k: v.relu() for k, v in x_dict.items()}
 
+       # entity embeddings to be used in determining sublicensing
+        entity_embeddings = x_dict["entity"]
+       
         # add moving to device later for GPU opt.
         batch = torch.zeros(x_dict["entity"].size(0), dtype=torch.long)
-        embedding = global_mean_pool(x_dict["entity"], batch)
-        return embedding
+        graph_embedding = global_mean_pool(x_dict["entity"], batch)
+
+
+        return entity_embeddings, graph_embedding

@@ -17,7 +17,7 @@ from python import catala_runtime
 
 
 class TaxEnv(gym.Env):
-    def __init__(self, hidden_dim, MAX_ENTITES=10, JURISDICTIONS=5):
+    def __init__(self, hidden_dim=256, MAX_ENTITES=10, JURISDICTIONS=5):
         self.observation_space: Space = spaces.Discrete(hidden_dim,)
         self.action_space: Space = spaces.MultiDiscrete([3, # add_child, rent_ip, transfer_ip
                                                          MAX_ENTITES, # arg1
