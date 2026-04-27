@@ -2,7 +2,6 @@ import gymnasium as gym
 from gymnasium import Space, spaces
 
 from typing import Dict, List
-from dataclasses import field
 
 from .state import WorldState
 from .render import build_graph
@@ -17,25 +16,34 @@ from python import catala_runtime
 
 
 class TaxEnv(gym.Env):
-    def __init__(self, hidden_dim=256, MAX_ENTITES=10, JURISDICTIONS=5):
-        self.observation_space: Space = spaces.Discrete(hidden_dim,)
-        self.action_space: Space = spaces.MultiDiscrete([3, # add_child, rent_ip, transfer_ip
-                                                         MAX_ENTITES, # arg1
-                                                         MAX_ENTITES, # arg2
-                                                         JURISDICTIONS, # arg 3
-                                                         JURISDICTIONS]) # arg 4
+    def __init__(self, hidden_dim=256, MAX_ENTITIES=10, JURISDICTIONS=5):
+        super().__init__()
+
+        self.observation_space: Space = spaces.Dict({})
+        self.action_space: Space = spaces.MultiDiscrete([
+            3,
+            MAX_ENTITIES,
+            MAX_ENTITIES,
+            JURISDICTIONS,
+            JURISDICTIONS,
+        ])
+
         self.state = None
 
         self.max_steps = 20
-        self.max_entities = MAX_ENTITES
+        self.max_entities = MAX_ENTITIES
 
-        self.idx_to_entity: Dict[int, str] = field(default_factory=dict)
-        self.idx_to_jurisdiction: Dict[int, str] = {0: "Ireland", 
-                                                    1: "Netherlands", 
-                                                    2: "Bermuda", 
-                                                    3: "US", 
-                                                    4: "Germany"}
-        self.prev_profit = catala_runtime.Money(0)
+        self.idx_to_entity: Dict[int, str] = {}
+        self.idx_to_jurisdiction: Dict[int, str] = {
+            0: "Ireland",
+            1: "Netherlands",
+            2: "Bermuda",
+            3: "US",
+            4: "Germany",
+        }
+
+        self.prev_profit = catala_runtime.Money(catala_runtime.Integer(0))
+        self.steps = 0
     
     def step(self, action):
         action_type, arg_1, arg_2, arg_3, arg_4 = action
@@ -48,7 +56,7 @@ class TaxEnv(gym.Env):
             tax_residence = self.state.get_tax_residence(incorporation_jurisdiction, management_jurisdiction)
 
             if action_type == 0:  
-                if len(self.state.entities >= self.max_entities):
+                if len(self.state.entities) >= self.max_entities:
                     raise ValueError("Maximum number of entities reached")
                 new_entity = self.state.add_child(
                     entity_1,
@@ -56,7 +64,7 @@ class TaxEnv(gym.Env):
                     management_jurisdiction,
                     tax_residence
                 )
-                self.idx_to_entity[new_entity] = len(self.state.entities)
+                self.idx_to_entity[len(self.state.entities)] = new_entity
 
             elif action_type == 1: 
                 self.state.rent_ip(
@@ -92,11 +100,14 @@ class TaxEnv(gym.Env):
     
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+
         self.state = WorldState()
         self.steps = 0
-        
-        # add root
+        self.prev_profit = catala_runtime.Money(catala_runtime.Integer(0))
+        self.idx_to_entity = {}
+
         self.state.add_root("root", "US", "US", "US")
+        self.idx_to_entity[0] = "root"
 
         return self.get_observation(), {}
     
@@ -149,7 +160,7 @@ class TaxEnv(gym.Env):
         current_profit = self.compute_profit()
         reward = current_profit - self.prev_profit
         self.prev_profit = current_profit
-        return reward
+        return float(reward)
 
     def compute_profit(self):
         entity_inputs: List[TaxModel.EntityTaxInput] = []
