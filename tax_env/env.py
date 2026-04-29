@@ -16,7 +16,7 @@ from python import catala_runtime
 
 
 class TaxEnv(gym.Env):
-    def __init__(self, hidden_dim=256, MAX_ENTITIES=10, JURISDICTIONS=5):
+    def __init__(self, MAX_ENTITIES=10, JURISDICTIONS=5):
         super().__init__()
 
         self.observation_space: Space = spaces.Dict({})
@@ -49,55 +49,76 @@ class TaxEnv(gym.Env):
         action_type, arg_1, arg_2, arg_3, arg_4 = action
 
         try:
-            entity_1 = self.idx_to_entity[arg_1]
-            entity_2 = self.idx_to_entity[arg_2]
-            incorporation_jurisdiction = self.idx_to_jurisdiction[arg_3]
-            management_jurisdiction = self.idx_to_jurisdiction[arg_4]
-            tax_residence = self.state.get_tax_residence(incorporation_jurisdiction, management_jurisdiction)
-
-            if action_type == 0:  
+            if action_type == 0:
                 if len(self.state.entities) >= self.max_entities:
                     raise ValueError("Maximum number of entities reached")
-                new_entity = self.state.add_child(
-                    entity_1,
+
+                parent_id = self.idx_to_entity[arg_1]
+                incorporation_jurisdiction = self.idx_to_jurisdiction[arg_3]
+                management_jurisdiction = self.idx_to_jurisdiction[arg_4]
+                tax_residence = self.state.get_tax_residence(
                     incorporation_jurisdiction,
                     management_jurisdiction,
-                    tax_residence
                 )
-                self.idx_to_entity[len(self.state.entities)] = new_entity
 
-            elif action_type == 1: 
-                self.state.rent_ip(
-                    entity_1,
-                    entity_2
+                new_entity = self.state.add_child(
+                    parent_id,
+                    incorporation_jurisdiction,
+                    management_jurisdiction,
+                    tax_residence,
                 )
+
+                new_idx = len(self.idx_to_entity)
+                self.idx_to_entity[new_idx] = new_entity
+
+            elif action_type == 1:
+                licensee_id = self.idx_to_entity[arg_1]
+                licensor_id = self.idx_to_entity[arg_2]
+
+                self.state.rent_ip(licensee_id, licensor_id)
+
+                if licensor_id == licensee_id:
+                    raise ValueError("A company cannot license IP from itself.")
 
             elif action_type == 2:
-                self.state.transfer_ip(entity_1)
-            
+                new_owner_id = self.idx_to_entity[arg_2]
+
+                if new_owner_id == self.state.ip_owner:
+                    raise ValueError("Cannot transfer IP to current owner.")
+
+                self.state.transfer_ip(new_owner_id)
+
             else:
                 raise ValueError("Unknown action type")
-            
+
             reward = self.compute_reward()
+
+            if action_type == 0:
+                reward -= 0.02
+            elif action_type == 2:
+                reward -= 0.05
+
             terminated = False
             truncated = False
-        
-        except:
-            reward = -100.0
+
+        except Exception as e:
+            print("Action:", action)
+            print("Exception:", e)
+
+            reward = -1.0
             terminated = False
             truncated = False
-        
+
         obs = self.get_observation()
         info = {}
-        
+
         self.steps += 1
-        
-        # check for truncation
+
         if self.steps >= self.max_steps:
             truncated = True
 
         return obs, reward, terminated, truncated, info
-    
+        
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -118,49 +139,93 @@ class TaxEnv(gym.Env):
         return build_graph(state=self.state)
     
     def get_action_mask(self):
-        '''
-        Mask that tells us if we can add more children
-        '''
         mask = [1, 1, 1]
 
         if len(self.state.entities) >= self.max_entities:
             mask[0] = 0
-        
+
+        if not self.can_rent_ip():
+            mask[1] = 0
+
+        if not self.can_transfer_ip():
+            mask[2] = 0
+
         return mask
     
-    def get_license_mask(self):
-        '''
-        Mask that tells us what entities can license ip
-        '''
-        mask = []
-        for i in range(self.max_entities):
-            if i not in self.idx_to_entity:
-                mask.append(0)
-            else:
-                entity_id = self.idx_to_entity[i]
-                mask.append(1 if self.state.has_ip_rights(entity_id) else 0) 
+    def would_create_license_cycle(self, licensee_id, licensor_id):
+        cur = licensor_id
 
-        return mask     
+        while cur in self.state.licenses:
+            cur = self.state.licenses[cur]
+
+            if cur == licensee_id:
+                return True
+
+        return False
     
+    def is_valid_rent_pair(self, licensee_id, licensor_id):
+        if licensee_id == licensor_id:
+            return False
+
+        if licensee_id in self.state.licenses:
+            return False
+
+        if not self.state.has_ip_rights(licensor_id):
+            return False
+
+        if self.would_create_license_cycle(licensee_id, licensor_id):
+            return False
+
+        return True
+
+    def can_rent_ip(self):
+        for licensee_id in self.state.entities:
+            for licensor_id in self.state.entities:
+                if self.is_valid_rent_pair(licensee_id, licensor_id):
+                    return True
+
+        return False
+
+
+    def can_transfer_ip(self):
+        if len(self.idx_to_entity) < 2:
+            return False
+
+        for _, entity_id in self.idx_to_entity.items():
+            if entity_id != self.state.ip_owner:
+                return True   
+
+        return False
+
+
+    def get_action_mask(self):
+        mask = [1, 1, 1]
+
+        if len(self.state.entities) >= self.max_entities:
+            mask[0] = 0
+
+        if not self.can_rent_ip():
+            mask[1] = 0
+
+        if not self.can_transfer_ip():
+            mask[2] = 0
+
+        return mask
+
+
     def get_entity_mask(self):
-        '''
-        Mask that tells us what entities can have subsidiaries
-        '''
-        
-        mask = []
-        for i in range(self.max_entities):
-            if i not in self.idx_to_entity:
-                mask.append(0)
-            else:
-                mask.append(1) 
+        return [1 for _ in range(len(self.idx_to_entity))]
 
-        return mask
+    
+    def money_to_float(self, money):
+        return float(money.value.value)
     
     def compute_reward(self):
         current_profit = self.compute_profit()
         reward = current_profit - self.prev_profit
         self.prev_profit = current_profit
-        return float(reward)
+        # divide by large number to make reward more stable
+        return self.money_to_float(reward) / 1e10
 
     def compute_profit(self):
         entity_inputs: List[TaxModel.EntityTaxInput] = []

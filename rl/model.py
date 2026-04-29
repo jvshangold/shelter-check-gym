@@ -58,13 +58,13 @@ class PolicyValueNet(nn.Module):
         incorporation_logits = self.incorporation_head(graph_embedding)
         management_logits = self.management_head(graph_embedding)
         
-        g = graph_embedding.unsqueeze(0).expand(entity_embeddings.size(0), -1) # shape(num_entities, embed_dim)
+        g = graph_embedding.expand(entity_embeddings.size(0), -1) # shape(num_entities, embed_dim)
         node_inputs = torch.cat([entity_embeddings, g], dim=-1)
 
         src_logits = self.src_entity_head(node_inputs).squeeze(-1)
         dst_logits = self.dst_entity_head(node_inputs).squeeze(-1)
 
-        value = self.value_head(graph_embedding).squeeze(-1)
+        value = 3.0 * torch.tanh(self.value_head(graph_embedding).squeeze(-1))
         
         return {
             "action_logits": action_logits,

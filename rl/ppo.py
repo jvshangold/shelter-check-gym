@@ -2,10 +2,18 @@ import torch
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
-
 def masked_categorical(logits, mask=None):
     if mask is not None:
-        logits = logits.masked_fill(~mask, float("-inf"))
+        if not mask.any():
+            raise ValueError(f"All actions masked out. mask={mask}, logits={logits}")
+
+        logits = logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
+
+    logits = torch.clamp(logits, -50, 50)
+
+    if mask is not None:
+        logits = logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
+
     return Categorical(logits=logits)
 
 def evaluate_action(model, obs, action, masks=None):
@@ -25,7 +33,7 @@ def evaluate_action(model, obs, action, masks=None):
     log_prob = log_prob + dist_action.log_prob(action["action_type"])
     entropy = entropy + dist_action.entropy()
 
-    if "src" in action and action["dst"] is not None:
+    if "src" in action and action["src"] is not None:
         dist_src = masked_categorical(out["src_logits"], src_mask)
         log_prob = log_prob + dist_src.log_prob(action["src"])
         entropy = entropy + dist_src.entropy()
@@ -39,7 +47,7 @@ def evaluate_action(model, obs, action, masks=None):
         entropy = entropy + dist_incorp.entropy()
     if "management" in action and action["management"] is not None:
         dist_mgmt = masked_categorical(out["management_logits"], management_mask)
-        log_prob = log_prob + dist_mgmt.log_prob(action["management_logits"])
+        log_prob = log_prob + dist_mgmt.log_prob(action["management"])
         entropy = entropy + dist_mgmt.entropy()
 
     return log_prob, entropy, out["value"]
@@ -49,9 +57,9 @@ def ppo_update(
         optimizer,
         rollout,
         clip_eps=0.2,
-        value_coef=0.5,
-        entropy_coef=0.01,
-        epochs=4,
+        value_coef=0.1,
+        entropy_coef=0.0,
+        epochs=2,
 ):
     data = rollout.get_tensors()
 
@@ -59,7 +67,8 @@ def ppo_update(
     advantages = data["advantages"]
     returns = data["returns"]
 
-    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+    advantages = (advantages - advantages.mean()) / (advantages.std(unbiased=False) + 1e-8)
+    advantages = torch.clamp(advantages, -10, 10)
 
     total_loss = 0.0
 
@@ -101,6 +110,7 @@ def ppo_update(
 
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
 
         total_loss += loss.item()

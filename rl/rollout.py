@@ -50,10 +50,13 @@ class RolloutBuffer:
             delta = rewards[t] + gamma * next_value * not_done - values[t]
             gae = delta + gamma * lam * not_done * gae
             advantages[t] = gae
+        
+        returns = (advantages + values).detach()
 
-        returns = advantages + values
-        self.advantages = advantages
+        self.advantages = advantages.detach()
         self.returns = returns
+
+        
 
     def get_tensors(self):
         '''
