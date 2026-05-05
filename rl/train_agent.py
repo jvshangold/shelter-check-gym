@@ -207,11 +207,12 @@ def train():
         buffer.clear()
         cumulative_reward = 0.0
 
-        action_counts = {0: 0, 1: 0, 2: 0}
+        reward_by_action = {0: [], 1: [], 2: []}
+        success_count = 0
 
         for _ in range(rollout_steps):
             with torch.no_grad():
-                
+
                 action, log_prob, entropy, value, masks = sample_action(
                     model=model,
                     env=env,
@@ -221,12 +222,13 @@ def train():
 
             env_action = action_dict_to_env_action(action)
 
-            # for debugging
-            action_counts[env_action[0]] += 1
-
             next_obs, reward, terminated, truncated, info = env.step(env_action)
             done = terminated or truncated
             next_obs = next_obs.to(device)
+
+            reward_by_action[env_action[0]].append(reward)
+            success_count += int(terminated)
+            
 
             buffer.add(
                 obs=obs,
@@ -257,8 +259,11 @@ def train():
             rollout=buffer,
         )
 
-        print(f"update: {update}; loss: {loss}; cumulative_reward: {cumulative_reward}")
-        print("action_counts:", action_counts)
+        if update % 25 == 0:
+            print(f"update: {update}; loss: {loss}; cumulative_reward: {cumulative_reward}; success_count: {success_count}")
+            for k, v in reward_by_action.items():
+                if v:
+                    print(k, sum(v) / len(v), len(v))
 
 
 if __name__ == "__main__":

@@ -58,8 +58,8 @@ def ppo_update(
         rollout,
         clip_eps=0.2,
         value_coef=0.1,
-        entropy_coef=0.0,
-        epochs=2,
+        entropy_coef=0.01,
+        epochs=3,
 ):
     data = rollout.get_tensors()
 

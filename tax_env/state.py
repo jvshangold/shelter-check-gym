@@ -61,6 +61,7 @@ class WorldState:
             raise ValueError(f"Unknown entity: {new_owner}")
 
         self.ip_owner = new_owner
+        self.licenses.clear()
 
     def rent_ip(self, licensee: str, licensor: str) -> None:
         if licensee not in self.entities:
@@ -133,3 +134,51 @@ class WorldState:
                                             tax_residence)
         self.ip_owner = entity_id
         return entity_id
+    
+    def get_eligible_countries(self) -> set[Jurisdiction]:
+        '''
+        Method to get the countries where we have ip
+        '''
+        return {
+            entity.incorporation_jurisdiction
+            for entity_id, entity in self.entities.items()
+            if self.has_ip_rights(entity_id)
+        }
+    
+    def has_irish_sandwich(self) -> bool:
+        """
+        Checks for a generic Irish/Dutch/Bermuda-style royalty chain:
+
+            Ireland tax resident -> Netherlands tax resident -> Bermuda tax resident
+
+        using the license graph:
+            licensee -> licensor
+        """
+        for start_id in self.entities:
+            cur_id = start_id
+            seen_ireland_to_netherlands = False
+            visited = set()
+
+            while cur_id in self.licenses:
+                if cur_id in visited:
+                    break
+                visited.add(cur_id)
+
+                next_id = self.licenses[cur_id]
+
+                cur_tr = self.entities[cur_id].tax_residence
+                next_tr = self.entities[next_id].tax_residence
+
+                if cur_tr == "Ireland" and next_tr == "Netherlands":
+                    seen_ireland_to_netherlands = True
+
+                if (
+                    seen_ireland_to_netherlands
+                    and cur_tr == "Netherlands"
+                    and next_tr == "Bermuda"
+                ):
+                    return True
+
+                cur_id = next_id
+
+        return False

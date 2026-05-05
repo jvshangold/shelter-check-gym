@@ -8,6 +8,10 @@ from .render import build_graph
 
 import sys
 
+from graphviz import Digraph
+
+import random
+
 sys.path.append("formalizations/_target/tax_rules")
 sys.path.append("formalizations/_build/libcatala/python")
 
@@ -93,12 +97,32 @@ class TaxEnv(gym.Env):
 
             reward = self.compute_reward()
 
-            if action_type == 0:
-                reward -= 0.02
-            elif action_type == 2:
-                reward -= 0.05
+            # penalize unrealistic tax structures
+            for entity in self.state.entities.values():
+                if entity.tax_residence != entity.incorporation_jurisdiction:
+                    reward -= 0.01
+
+            current_profit = self.compute_profit()
+            baseline_profit = self.compute_baseline_profit()
+
+            current_profit_float = self.money_to_float(current_profit)
 
             terminated = False
+
+            if (
+                current_profit_float > baseline_profit * 1.03
+                and len(self.state.entities) >= 3
+                and len(self.state.licenses) >= 1
+            ):
+                reward += 0.5
+                if self.state.has_irish_sandwich():
+                    self.render_world()
+                    terminated = True
+
+            
+            if action_type == 2:
+                reward -= 0.02
+
             truncated = False
 
         except Exception as e:
@@ -127,7 +151,13 @@ class TaxEnv(gym.Env):
         self.prev_profit = catala_runtime.Money(catala_runtime.Integer(0))
         self.idx_to_entity = {}
 
-        self.state.add_root("root", "US", "US", "US")
+        # get incorporation and management jurisdictions
+        # we randomize it to explore more structures
+        incorporation_jurisdiction = self.idx_to_jurisdiction[random.randrange(5)]
+        management_jurisdiction = self.idx_to_jurisdiction[random.randrange(5)]
+        tax_residence = self.state.get_tax_residence(incorporation_jurisdiction, management_jurisdiction)
+        
+        self.state.add_root("root", incorporation_jurisdiction, management_jurisdiction, tax_residence)
         self.idx_to_entity[0] = "root"
 
         return self.get_observation(), {}
@@ -227,6 +257,30 @@ class TaxEnv(gym.Env):
         # divide by large number to make reward more stable
         return self.money_to_float(reward) / 1e10
 
+    def compute_baseline_profit(self):
+        baseline_profit = 0.0
+
+        tax_rates = {
+            "Ireland": 0.125,
+            "Bermuda": 0.0,
+            "Netherlands": 0.258,
+            "US": 0.21,
+            "Germany": 0.15,
+        }
+
+        for entity_id, entity in self.state.entities.items():
+            if not self.state.has_ip_rights(entity_id):
+                continue
+
+            revenue = self.state.get_company_revenue(entity_id)
+            tax_rate = tax_rates[entity.tax_residence]
+
+            baseline_profit += revenue * (1.0 - tax_rate)
+
+        return baseline_profit
+
+
+    
     def compute_profit(self):
         entity_inputs: List[TaxModel.EntityTaxInput] = []
         payment_dict: Dict[str, List[TaxModel.Payment]] = {
@@ -320,4 +374,27 @@ class TaxEnv(gym.Env):
             amount=amount,
             kind=kind,
         )
-    
+
+
+    def render_world(self, filename="world"):
+        dot = Digraph()
+
+        # nodes
+        for entity_id, e in self.state.entities.items():
+            label = f"{entity_id}\n{e.incorporation_jurisdiction}\nTR: {e.tax_residence}"
+
+            if entity_id == self.state.ip_owner:
+                dot.node(entity_id, label, style="filled", fillcolor="lightblue")
+            else:
+                dot.node(entity_id, label)
+
+        # ownership edges
+        for parent, child in self.state.subsidiary:
+            dot.edge(parent, child, label="owns")
+
+        # license edges
+        for licensee, licensor in self.state.licenses.items():
+            dot.edge(licensor, licensee, label="license", style="dashed")
+
+        dot.render(filename, format="png", cleanup=True)
+        
