@@ -13,30 +13,6 @@ from . import Money_en as money_en
 from . import Integer_en as integer_en
 from . import Decimal_en as decimal_en
 
-class PaymentKind_Code(Enum):
-    Royalty = 0
-    Dividend = 1
-    ServiceFee = 2
-
-class PaymentKind:
-    def __init__(self, code: PaymentKind_Code, value: Any) -> None:
-        self.code = code
-        self.value = value
-
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, PaymentKind):
-            return self.code == other.code and self.value == other.value
-        else:
-            return False
-
-
-    def __ne__(self, other: object) -> bool:
-        return not (self == other)
-
-    def __str__(self) -> str:
-        return "{}({})".format(self.code, self.value)
-
 class Jurisdiction_Code(Enum):
     Ireland = 0
     Bermuda = 1
@@ -62,6 +38,22 @@ class Jurisdiction:
 
     def __str__(self) -> str:
         return "{}({})".format(self.code, self.value)
+
+class RoyaltyDeductibility:
+    def __init__(self, deductible_amount: Money) -> None:
+        self.deductible_amount = deductible_amount
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, RoyaltyDeductibility):
+            return (self.deductible_amount == other.deductible_amount)
+        else:
+            return False
+
+    def __ne__(self, other: object) -> bool:
+        return not (self == other)
+
+    def __str__(self) -> str:
+        return "RoyaltyDeductibility(deductible_amount={})".format(self.deductible_amount)
 
 class CorporateTaxComputation:
     def __init__(self, tax_due: Money) -> None:
@@ -144,6 +136,22 @@ class Entity:
     def __str__(self) -> str:
         return "Entity(incorporation_jurisdiction={},tax_residence={})".format(self.incorporation_jurisdiction, self.tax_residence)
 
+class TestRoyaltyDeductibility:
+    def __init__(self, computation: RoyaltyDeductibility) -> None:
+        self.computation = computation
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, TestRoyaltyDeductibility):
+            return (self.computation == other.computation)
+        else:
+            return False
+
+    def __ne__(self, other: object) -> bool:
+        return not (self == other)
+
+    def __str__(self) -> str:
+        return "TestRoyaltyDeductibility(computation={})".format(self.computation)
+
 class TestCorporateTaxComputation:
     def __init__(self, computation: CorporateTaxComputation) -> None:
         self.computation = computation
@@ -193,15 +201,14 @@ class TestEntityTaxOutcome:
         return "TestEntityTaxOutcome(computation={})".format(self.computation)
 
 class Payment:
-    def __init__(self, payer: Entity, receiver: Entity, amount: Money, kind: PaymentKind) -> None:
+    def __init__(self, payer: Entity, receiver: Entity, amount: Money) -> None:
         self.payer = payer
         self.receiver = receiver
         self.amount = amount
-        self.kind = kind
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Payment):
-            return (self.payer == other.payer and self.receiver == other.receiver and self.amount == other.amount and self.kind == other.kind)
+            return (self.payer == other.payer and self.receiver == other.receiver and self.amount == other.amount)
         else:
             return False
 
@@ -209,7 +216,7 @@ class Payment:
         return not (self == other)
 
     def __str__(self) -> str:
-        return "Payment(payer={},receiver={},amount={},kind={})".format(self.payer, self.receiver, self.amount, self.kind)
+        return "Payment(payer={},receiver={},amount={})".format(self.payer, self.receiver, self.amount)
 
 class EntityTaxInput:
     def __init__(self, entity: Entity, gross_revenue: Money, outgoing_payments: List[Payment]) -> None:
@@ -228,6 +235,22 @@ class EntityTaxInput:
 
     def __str__(self) -> str:
         return "EntityTaxInput(entity={},gross_revenue={},outgoing_payments={})".format(self.entity, self.gross_revenue, self.outgoing_payments)
+
+class RoyaltyDeductibilityIn:
+    def __init__(self, payment_in: Payment) -> None:
+        self.payment_in = payment_in
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, RoyaltyDeductibilityIn):
+            return (self.payment_in == other.payment_in)
+        else:
+            return False
+
+    def __ne__(self, other: object) -> bool:
+        return not (self == other)
+
+    def __str__(self) -> str:
+        return "RoyaltyDeductibilityIn(payment_in={})".format(self.payment_in)
 
 class CorporateTaxComputationIn:
     def __init__(self, entity_in: Entity, gross_revenue_in: Money, outgoing_payments_in: List[Payment]) -> None:
@@ -297,6 +320,22 @@ class GroupTaxOutcomeIn:
     def __str__(self) -> str:
         return "GroupTaxOutcomeIn(entity_inputs_in={})".format(self.entity_inputs_in)
 
+class TestRoyaltyDeductibilityIn:
+    def __init__(self, ) -> None:
+        pass
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, TestRoyaltyDeductibilityIn):
+            return (True)
+        else:
+            return False
+
+    def __ne__(self, other: object) -> bool:
+        return not (self == other)
+
+    def __str__(self) -> str:
+        return "TestRoyaltyDeductibilityIn()".format()
+
 class TestCorporateTaxComputationIn:
     def __init__(self, ) -> None:
         pass
@@ -346,6 +385,67 @@ class TestEntityTaxOutcomeIn:
         return "TestEntityTaxOutcomeIn()".format()
 
 
+def royalty_deductibility(royalty_deductibility_in:RoyaltyDeductibilityIn):
+    payment = (royalty_deductibility_in.payment_in)
+    receiver_country = (payment.receiver.tax_residence)
+    payer_country = (payment.payer.tax_residence)
+    us_royalty_deductible = ((payer_country == Jurisdiction(Jurisdiction_Code.US, Unit())))
+    eu_royalty_deductible = ((((payer_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Germany, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Germany, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Germany, Unit()))) or ((payer_country == Jurisdiction(Jurisdiction_Code.Germany, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())))))))))
+    if eu_royalty_deductible:
+        deductible_amount = (payment.amount)
+    elif us_royalty_deductible:
+        deductible_amount = (payment.amount)
+    else:
+        deductible_amount = (Money(Integer(0)))
+    return RoyaltyDeductibility(deductible_amount = deductible_amount)
+
+def withholding_tax_computation(withholding_tax_computation_in:WithholdingTaxComputationIn):
+    payment = (withholding_tax_computation_in.payment_in)
+    withholding_rate__1 = (payment.payer.tax_residence)
+    if withholding_rate__1.code == Jurisdiction_Code.Ireland:
+        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Germany, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Bermuda, Unit())):
+            withholding_rate = (decimal_of_string("1/5"))
+        else:
+            withholding_rate = (decimal_of_string("1/10"))
+    elif withholding_rate__1.code == Jurisdiction_Code.Bermuda:
+        withholding_rate = (decimal_of_string("0"))
+    elif withholding_rate__1.code == Jurisdiction_Code.Netherlands:
+        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Ireland, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Germany, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Bermuda, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        else:
+            withholding_rate = (decimal_of_string("1/20"))
+    elif withholding_rate__1.code == Jurisdiction_Code.US:
+        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Ireland, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Germany, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        else:
+            withholding_rate = (decimal_of_string("1/10"))
+    elif withholding_rate__1.code == Jurisdiction_Code.Germany:
+        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Ireland, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
+            withholding_rate = (decimal_of_string("0"))
+        else:
+            withholding_rate = (decimal_of_string("3/20"))
+    withholding_tax_due = ((payment.amount * withholding_rate))
+    return WithholdingTaxComputation(withholding_tax_due = withholding_tax_due)
+
+def test_royalty_deductibility(test_royalty_deductibility_in:TestRoyaltyDeductibilityIn):
+    result = (royalty_deductibility(RoyaltyDeductibilityIn(payment_in = Payment(payer = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), receiver = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), amount = Money(Integer(9000))))))
+    computation = (RoyaltyDeductibility(deductible_amount = result.deductible_amount))
+    return TestRoyaltyDeductibility(computation = computation)
+
 def corporate_tax_computation(corporate_tax_computation_in:CorporateTaxComputationIn):
     entity = (corporate_tax_computation_in.entity_in)
     gross_revenue = (corporate_tax_computation_in.gross_revenue_in)
@@ -362,17 +462,8 @@ def corporate_tax_computation(corporate_tax_computation_in:CorporateTaxComputati
     elif tax_rate__1.code == Jurisdiction_Code.Germany:
         tax_rate = (decimal_of_string("3/20"))
     def deductible_payments__1(payment:Payment):
-        deductible_payments__3 = (payment.kind)
-        if deductible_payments__3.code == PaymentKind_Code.Royalty:
-            deductible_payments__2 = (True)
-        elif deductible_payments__3.code == PaymentKind_Code.Dividend:
-            deductible_payments__2 = (False)
-        elif deductible_payments__3.code == PaymentKind_Code.ServiceFee:
-            deductible_payments__2 = (False)
-        if deductible_payments__2:
-            return payment.amount
-        else:
-            return Money(Integer(0))
+        result = (royalty_deductibility(RoyaltyDeductibilityIn(payment_in = payment)))
+        return RoyaltyDeductibility(deductible_amount = result.deductible_amount).deductible_amount
     deductible_payments = (money_en.sum(list_map(deductible_payments__1, outgoing_payments)))
     if ((gross_revenue - deductible_payments) <= Money(Integer(0))):
         tax_base = (Money(Integer(0)))
@@ -381,48 +472,15 @@ def corporate_tax_computation(corporate_tax_computation_in:CorporateTaxComputati
     tax_due = ((tax_base * tax_rate))
     return CorporateTaxComputation(tax_due = tax_due)
 
-def withholding_tax_computation(withholding_tax_computation_in:WithholdingTaxComputationIn):
-    payment = (withholding_tax_computation_in.payment_in)
-    withholding_rate__2 = (payment.kind)
-    if withholding_rate__2.code == PaymentKind_Code.Royalty:
-        withholding_rate__1 = (True)
-    elif withholding_rate__2.code == PaymentKind_Code.Dividend:
-        withholding_rate__1 = (False)
-    elif withholding_rate__2.code == PaymentKind_Code.ServiceFee:
-        withholding_rate__1 = (False)
-    if withholding_rate__1:
-        if (payment.payer.tax_residence == Jurisdiction(Jurisdiction_Code.Ireland, Unit())):
-            if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
-                withholding_rate = (decimal_of_string("0"))
-            elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Bermuda, Unit())):
-                withholding_rate = (decimal_of_string("1/5"))
-            else:
-                withholding_rate = (decimal_of_string("1/10"))
-        elif (payment.payer.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
-            if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Bermuda, Unit())):
-                withholding_rate = (decimal_of_string("0"))
-            else:
-                withholding_rate = (decimal_of_string("1/20"))
-        elif (payment.payer.tax_residence == Jurisdiction(Jurisdiction_Code.Bermuda, Unit())):
-            withholding_rate = (decimal_of_string("0"))
-        elif (payment.payer.tax_residence == Jurisdiction(Jurisdiction_Code.US, Unit())):
-            withholding_rate = (decimal_of_string("1/10"))
-        else:
-            withholding_rate = (decimal_of_string("3/20"))
-    else:
-        withholding_rate = (decimal_of_string("0"))
-    withholding_tax_due = ((payment.amount * withholding_rate))
-    return WithholdingTaxComputation(withholding_tax_due = withholding_tax_due)
-
-def test_corporate_tax_computation(test_corporate_tax_computation_in:TestCorporateTaxComputationIn):
-    result = (corporate_tax_computation(CorporateTaxComputationIn(entity_in = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), gross_revenue_in = Money(Integer(10000)), outgoing_payments_in = [Payment(payer = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), receiver = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), amount = Money(Integer(9000)), kind = PaymentKind(PaymentKind_Code.Royalty, Unit()))])))
-    computation = (CorporateTaxComputation(tax_due = result.tax_due))
-    return TestCorporateTaxComputation(computation = computation)
-
 def test_withholding(test_withholding_in:TestWithholdingIn):
-    result = (withholding_tax_computation(WithholdingTaxComputationIn(payment_in = Payment(payer = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), receiver = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), amount = Money(Integer(9000)), kind = PaymentKind(PaymentKind_Code.Royalty, Unit())))))
+    result = (withholding_tax_computation(WithholdingTaxComputationIn(payment_in = Payment(payer = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), receiver = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), amount = Money(Integer(9000))))))
     computation = (WithholdingTaxComputation(withholding_tax_due = result.withholding_tax_due))
     return TestWithholding(computation = computation)
+
+def test_corporate_tax_computation(test_corporate_tax_computation_in:TestCorporateTaxComputationIn):
+    result = (corporate_tax_computation(CorporateTaxComputationIn(entity_in = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), gross_revenue_in = Money(Integer(10000)), outgoing_payments_in = [Payment(payer = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), receiver = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), amount = Money(Integer(9000)))])))
+    computation = (CorporateTaxComputation(tax_due = result.tax_due))
+    return TestCorporateTaxComputation(computation = computation)
 
 def entity_tax_outcome(entity_tax_outcome_in:EntityTaxOutcomeIn):
     entity = (entity_tax_outcome_in.entity_in)
@@ -438,7 +496,7 @@ def entity_tax_outcome(entity_tax_outcome_in:EntityTaxOutcomeIn):
     return EntityTaxOutcome(total_tax = total_tax)
 
 def test_entity_tax_outcome(test_entity_tax_outcome_in:TestEntityTaxOutcomeIn):
-    result = (entity_tax_outcome(EntityTaxOutcomeIn(entity_in = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), gross_revenue_in = Money(Integer(10000)), outgoing_payments_in = [Payment(payer = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), receiver = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), amount = Money(Integer(9000)), kind = PaymentKind(PaymentKind_Code.Royalty, Unit()))])))
+    result = (entity_tax_outcome(EntityTaxOutcomeIn(entity_in = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), gross_revenue_in = Money(Integer(10000)), outgoing_payments_in = [Payment(payer = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Ireland, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Ireland, Unit())), receiver = Entity(incorporation_jurisdiction = Jurisdiction(Jurisdiction_Code.Netherlands, Unit()), tax_residence = Jurisdiction(Jurisdiction_Code.Netherlands, Unit())), amount = Money(Integer(9000)))])))
     computation = (EntityTaxOutcome(total_tax = result.total_tax))
     return TestEntityTaxOutcome(computation = computation)
 

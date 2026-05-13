@@ -2,14 +2,16 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional, Literal
 
 Jurisdiction = Literal["Ireland", "Netherlands", "Bermuda", "US", "Germany"]
+CompanyType = Literal["Holding", "Operating"]
 
 
 @dataclass
 class Entity:
     id: str
     incorporation_jurisdiction: Jurisdiction  # = operating location
-    management_jurisdiction: Jurisdiction # = management location
+    management_jurisdiction: Jurisdiction     # = management location
     tax_residence: Jurisdiction
+    company_type: CompanyType
     parent_id: Optional[str] = None
 
 
@@ -37,6 +39,7 @@ class WorldState:
         incorporation_jurisdiction: Jurisdiction,
         management_jurisdiction: Jurisdiction,
         tax_residence: Jurisdiction,
+        company_type: CompanyType,
     ) -> str:
         if parent not in self.entities:
             raise ValueError(f"Unknown parent entity: {parent}")
@@ -49,6 +52,7 @@ class WorldState:
             incorporation_jurisdiction=incorporation_jurisdiction,
             management_jurisdiction=management_jurisdiction,
             tax_residence=tax_residence,
+            company_type=company_type,
             parent_id=parent,
         )
 
@@ -59,6 +63,9 @@ class WorldState:
     def transfer_ip(self, new_owner: str) -> None:
         if new_owner not in self.entities:
             raise ValueError(f"Unknown entity: {new_owner}")
+
+        # In this simplified model, the entity holding IP becomes a holding company.
+        self.entities[new_owner].company_type = "Holding"
 
         self.ip_owner = new_owner
         self.licenses.clear()
@@ -73,11 +80,17 @@ class WorldState:
         if self.ip_owner is None:
             raise ValueError("No company currently owns the IP.")
 
-        # licensor must have rights (owner or already licensed)
+        # licensor must have rights: owner or already licensed
         if not (licensor == self.ip_owner or licensor in self.licenses):
             raise ValueError(
                 f"{licensor} does not own or have a license to use IP"
             )
+
+        # A company receiving a license is operating in the market.
+        self.entities[licensee].company_type = "Operating"
+
+        # A company licensing IP onward is functioning as a holding/IP intermediary.
+        self.entities[licensor].company_type = "Holding"
 
         # cycle check
         cur = licensor
@@ -87,18 +100,28 @@ class WorldState:
                 raise ValueError("This would create a licensing cycle")
 
         self.licenses[licensee] = licensor
-    
+
     def get_company_revenue(self, entity_id: str) -> float:
         if entity_id not in self.entities:
             raise ValueError(f"Unknown entity: {entity_id}")
-    
+
         entity = self.entities[entity_id]
+
+        # Holding companies receive royalty income, not market revenue.
+        # Operating companies generate market revenue in their incorporation jurisdiction.
+        if entity.company_type != "Operating":
+            return 0.0
+
         country = entity.incorporation_jurisdiction
 
         eligible = [
             e_id
             for e_id, e in self.entities.items()
-            if e.incorporation_jurisdiction == country and self.has_ip_rights(e_id)
+            if (
+                e.incorporation_jurisdiction == country
+                and e.company_type == "Operating"
+                and self.has_ip_rights(e_id)
+            )
         ]
 
         if entity_id not in eligible:
@@ -108,43 +131,55 @@ class WorldState:
             return 0.0
 
         return self.country_revenue[country] / len(eligible)
-    
 
     def has_ip_rights(self, entity_id: str) -> bool:
-        '''Helper to be used to divide revenue coming from a country'''
+        """Helper to be used to divide revenue coming from a country."""
         return entity_id in self.licenses or entity_id == self.ip_owner
-    
-    def get_tax_residence(self, incorporation_jurisdiction, management_jurisdiction):
-        eu_countries = {"Ireland", "Netherlands", "Germany"}
 
-        if incorporation_jurisdiction in eu_countries:
-            return incorporation_jurisdiction
-        else:
+    def get_tax_residence(
+        self,
+        incorporation_jurisdiction: Jurisdiction,
+        management_jurisdiction: Jurisdiction,
+    ) -> Jurisdiction:
+        if incorporation_jurisdiction == "Ireland":
             return management_jurisdiction
-        
+        else:
+            return incorporation_jurisdiction
 
-    def add_root(self,
-                entity_id: Entity,
-                incorporation_jurisdiction: Jurisdiction,
-                management_jurisdiction: Jurisdiction,
-                tax_residence: Jurisdiction):
-        
-        self.entities[entity_id] = Entity(entity_id, incorporation_jurisdiction, 
-                                            management_jurisdiction,
-                                            tax_residence)
+    def add_root(
+        self,
+        entity_id: str,
+        incorporation_jurisdiction: Jurisdiction,
+        management_jurisdiction: Jurisdiction,
+        tax_residence: Jurisdiction,
+        company_type: CompanyType,
+    ) -> str:
+        if entity_id in self.entities:
+            raise ValueError(f"Entity already exists: {entity_id}")
+
+        root = Entity(
+            id=entity_id,
+            incorporation_jurisdiction=incorporation_jurisdiction,
+            management_jurisdiction=management_jurisdiction,
+            tax_residence=tax_residence,
+            company_type=company_type,
+            parent_id=None,
+        )
+
+        self.entities[entity_id] = root
         self.ip_owner = entity_id
         return entity_id
-    
+
     def get_eligible_countries(self) -> set[Jurisdiction]:
-        '''
-        Method to get the countries where we have ip
-        '''
+        """
+        Method to get the countries where we have IP rights.
+        """
         return {
             entity.incorporation_jurisdiction
             for entity_id, entity in self.entities.items()
             if self.has_ip_rights(entity_id)
         }
-    
+
     def has_irish_sandwich(self) -> bool:
         """
         Checks for a generic Irish/Dutch/Bermuda-style royalty chain:

@@ -24,12 +24,31 @@ class TaxEnv(gym.Env):
         super().__init__()
 
         self.observation_space: Space = spaces.Dict({})
+
+        # action = [
+        #   action_type,
+        #   arg_1,
+        #   arg_2,
+        #   incorporation_jurisdiction,
+        #   management_jurisdiction,
+        #   company_type,
+        # ]
+        #
+        # action_type:
+        #   0 = add_child
+        #   1 = rent_ip
+        #   2 = transfer_ip
+        #
+        # company_type:
+        #   0 = Holding
+        #   1 = Operating
         self.action_space: Space = spaces.MultiDiscrete([
             3,
             MAX_ENTITIES,
             MAX_ENTITIES,
             JURISDICTIONS,
             JURISDICTIONS,
+            2,
         ])
 
         self.state = None
@@ -46,11 +65,16 @@ class TaxEnv(gym.Env):
             4: "Germany",
         }
 
+        self.idx_to_company_type: Dict[int, str] = {
+            0: "Holding",
+            1: "Operating",
+        }
+
         self.prev_profit = catala_runtime.Money(catala_runtime.Integer(0))
         self.steps = 0
-    
+
     def step(self, action):
-        action_type, arg_1, arg_2, arg_3, arg_4 = action
+        action_type, arg_1, arg_2, arg_3, arg_4, arg_5 = action
 
         try:
             if action_type == 0:
@@ -60,16 +84,19 @@ class TaxEnv(gym.Env):
                 parent_id = self.idx_to_entity[arg_1]
                 incorporation_jurisdiction = self.idx_to_jurisdiction[arg_3]
                 management_jurisdiction = self.idx_to_jurisdiction[arg_4]
+                company_type = self.idx_to_company_type[arg_5]
+
                 tax_residence = self.state.get_tax_residence(
                     incorporation_jurisdiction,
                     management_jurisdiction,
                 )
 
                 new_entity = self.state.add_child(
-                    parent_id,
-                    incorporation_jurisdiction,
-                    management_jurisdiction,
-                    tax_residence,
+                    parent=parent_id,
+                    incorporation_jurisdiction=incorporation_jurisdiction,
+                    management_jurisdiction=management_jurisdiction,
+                    tax_residence=tax_residence,
+                    company_type=company_type,
                 )
 
                 new_idx = len(self.idx_to_entity)
@@ -79,10 +106,10 @@ class TaxEnv(gym.Env):
                 licensee_id = self.idx_to_entity[arg_1]
                 licensor_id = self.idx_to_entity[arg_2]
 
-                self.state.rent_ip(licensee_id, licensor_id)
-
                 if licensor_id == licensee_id:
                     raise ValueError("A company cannot license IP from itself.")
+
+                self.state.rent_ip(licensee_id, licensor_id)
 
             elif action_type == 2:
                 new_owner_id = self.idx_to_entity[arg_2]
@@ -119,7 +146,6 @@ class TaxEnv(gym.Env):
                     self.render_world()
                     terminated = True
 
-            
             if action_type == 2:
                 reward -= 0.02
 
@@ -142,7 +168,7 @@ class TaxEnv(gym.Env):
             truncated = True
 
         return obs, reward, terminated, truncated, info
-        
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -151,37 +177,32 @@ class TaxEnv(gym.Env):
         self.prev_profit = catala_runtime.Money(catala_runtime.Integer(0))
         self.idx_to_entity = {}
 
-        # get incorporation and management jurisdictions
-        # we randomize it to explore more structures
-        incorporation_jurisdiction = self.idx_to_jurisdiction[random.randrange(5)]
-        management_jurisdiction = self.idx_to_jurisdiction[random.randrange(5)]
-        tax_residence = self.state.get_tax_residence(incorporation_jurisdiction, management_jurisdiction)
-        
-        self.state.add_root("root", incorporation_jurisdiction, management_jurisdiction, tax_residence)
+        # add US root
+        incorporation_jurisdiction = self.idx_to_jurisdiction[3]
+        management_jurisdiction = self.idx_to_jurisdiction[3]
+        tax_residence = self.state.get_tax_residence(
+            incorporation_jurisdiction,
+            management_jurisdiction,
+        )
+
+        self.state.add_root(
+            entity_id="root",
+            incorporation_jurisdiction=incorporation_jurisdiction,
+            management_jurisdiction=management_jurisdiction,
+            tax_residence=tax_residence,
+            company_type="Operating",
+        )
+
         self.idx_to_entity[0] = "root"
 
         return self.get_observation(), {}
-    
+
     def render(self):
         return
-    
+
     def get_observation(self):
         return build_graph(state=self.state)
-    
-    def get_action_mask(self):
-        mask = [1, 1, 1]
 
-        if len(self.state.entities) >= self.max_entities:
-            mask[0] = 0
-
-        if not self.can_rent_ip():
-            mask[1] = 0
-
-        if not self.can_transfer_ip():
-            mask[2] = 0
-
-        return mask
-    
     def would_create_license_cycle(self, licensee_id, licensor_id):
         cur = licensor_id
 
@@ -192,7 +213,7 @@ class TaxEnv(gym.Env):
                 return True
 
         return False
-    
+
     def is_valid_rent_pair(self, licensee_id, licensor_id):
         if licensee_id == licensor_id:
             return False
@@ -216,17 +237,15 @@ class TaxEnv(gym.Env):
 
         return False
 
-
     def can_transfer_ip(self):
         if len(self.idx_to_entity) < 2:
             return False
 
         for _, entity_id in self.idx_to_entity.items():
             if entity_id != self.state.ip_owner:
-                return True   
+                return True
 
         return False
-
 
     def get_action_mask(self):
         mask = [1, 1, 1]
@@ -242,18 +261,17 @@ class TaxEnv(gym.Env):
 
         return mask
 
-
     def get_entity_mask(self):
         return [1 for _ in range(len(self.idx_to_entity))]
 
-    
     def money_to_float(self, money):
         return float(money.value.value)
-    
+
     def compute_reward(self):
         current_profit = self.compute_profit()
         reward = current_profit - self.prev_profit
         self.prev_profit = current_profit
+
         # divide by large number to make reward more stable
         return self.money_to_float(reward) / 1e10
 
@@ -269,6 +287,9 @@ class TaxEnv(gym.Env):
         }
 
         for entity_id, entity in self.state.entities.items():
+            if entity.company_type != "Operating":
+                continue
+
             if not self.state.has_ip_rights(entity_id):
                 continue
 
@@ -279,8 +300,6 @@ class TaxEnv(gym.Env):
 
         return baseline_profit
 
-
-    
     def compute_profit(self):
         entity_inputs: List[TaxModel.EntityTaxInput] = []
         payment_dict: Dict[str, List[TaxModel.Payment]] = {
@@ -292,7 +311,7 @@ class TaxEnv(gym.Env):
         for entity_id, entity in self.state.entities.items():
             payer_catala_entity = self.make_entity(
                 entity.incorporation_jurisdiction,
-                entity.tax_residence
+                entity.tax_residence,
             )
 
             revenue = self.state.get_company_revenue(entity_id)
@@ -301,22 +320,24 @@ class TaxEnv(gym.Env):
             if entity_id in self.state.licenses:
                 prev_id = entity_id
                 prev_catala_entity = payer_catala_entity
-                cur_payment = 0.9 * revenue
+                cur_payment = self.state.royalty_rate * revenue
                 cur_licensor_id = self.state.licenses[entity_id]
 
                 while True:
                     licensor_entity = self.state.entities[cur_licensor_id]
                     licensor_catala_entity = self.make_entity(
                         licensor_entity.incorporation_jurisdiction,
-                        licensor_entity.tax_residence
+                        licensor_entity.tax_residence,
                     )
 
                     payment = self.make_payment(
                         prev_catala_entity,
                         licensor_catala_entity,
-                        catala_runtime.Money(catala_runtime.Integer(round(cur_payment))),
-                        self.make_payment_kind("Royalty"),
+                        catala_runtime.Money(
+                            catala_runtime.Integer(round(cur_payment))
+                        ),
                     )
+
                     payment_dict[prev_id].append(payment)
 
                     if cur_licensor_id not in self.state.licenses:
@@ -325,12 +346,12 @@ class TaxEnv(gym.Env):
                     prev_id = cur_licensor_id
                     prev_catala_entity = licensor_catala_entity
                     cur_licensor_id = self.state.licenses[cur_licensor_id]
-                    cur_payment *= 0.9
+                    cur_payment *= self.state.royalty_rate
 
         for entity_id, entity in self.state.entities.items():
             catala_entity = self.make_entity(
                 entity.incorporation_jurisdiction,
-                entity.tax_residence
+                entity.tax_residence,
             )
 
             revenue = self.state.get_company_revenue(entity_id)
@@ -338,7 +359,9 @@ class TaxEnv(gym.Env):
             entity_inputs.append(
                 TaxModel.EntityTaxInput(
                     entity=catala_entity,
-                    gross_revenue=catala_runtime.Money(catala_runtime.Integer(round(revenue))),
+                    gross_revenue=catala_runtime.Money(
+                        catala_runtime.Integer(round(revenue))
+                    ),
                     outgoing_payments=payment_dict[entity_id],
                 )
             )
@@ -347,41 +370,43 @@ class TaxEnv(gym.Env):
             TaxModel.GroupTaxOutcomeIn(entity_inputs_in=entity_inputs)
         ).total_group_tax
 
-        return catala_runtime.Money(catala_runtime.Integer(total_revenue)) - total_group_tax
-    
+        return (
+            catala_runtime.Money(catala_runtime.Integer(total_revenue))
+            - total_group_tax
+        )
+
     def make_jurisdiction(self, jurisdiction: str):
         return TaxModel.Jurisdiction(
             getattr(TaxModel.Jurisdiction_Code, jurisdiction),
-            catala_runtime.Unit()
-        )
-
-    def make_payment_kind(self, kind: str):
-        return TaxModel.PaymentKind(
-            getattr(TaxModel.PaymentKind_Code, kind),
-            catala_runtime.Unit()
+            catala_runtime.Unit(),
         )
 
     def make_entity(self, incorporation_jurisdiction: str, tax_residence: str):
         return TaxModel.Entity(
-            incorporation_jurisdiction=self.make_jurisdiction(incorporation_jurisdiction),
+            incorporation_jurisdiction=self.make_jurisdiction(
+                incorporation_jurisdiction
+            ),
             tax_residence=self.make_jurisdiction(tax_residence),
         )
 
-    def make_payment(self, payer, receiver, amount, kind):
+    def make_payment(self, payer, receiver, amount):
         return TaxModel.Payment(
             payer=payer,
             receiver=receiver,
             amount=amount,
-            kind=kind,
         )
-
 
     def render_world(self, filename="world"):
         dot = Digraph()
 
         # nodes
         for entity_id, e in self.state.entities.items():
-            label = f"{entity_id}\n{e.incorporation_jurisdiction}\nTR: {e.tax_residence}"
+            label = (
+                f"{entity_id}\n"
+                f"{e.incorporation_jurisdiction}\n"
+                f"TR: {e.tax_residence}\n"
+                f"{e.company_type}"
+            )
 
             if entity_id == self.state.ip_owner:
                 dot.node(entity_id, label, style="filled", fillcolor="lightblue")
@@ -397,4 +422,3 @@ class TaxEnv(gym.Env):
             dot.edge(licensor, licensee, label="license", style="dashed")
 
         dot.render(filename, format="png", cleanup=True)
-        

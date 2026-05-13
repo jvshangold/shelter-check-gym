@@ -5,16 +5,10 @@ declaration structure Entity:
   data incorporation_jurisdiction content Jurisdiction
   data tax_residence content Jurisdiction
 
-declaration enumeration PaymentKind:
-  -- Royalty
-  -- Dividend
-  -- ServiceFee
-
 declaration structure Payment:
   data payer content Entity
   data receiver content Entity
   data amount content money
-  data kind content PaymentKind
 
 declaration enumeration Jurisdiction:
   -- Ireland
@@ -27,6 +21,14 @@ declaration structure EntityTaxInput:
   data entity content Entity
   data gross_revenue content money
   data outgoing_payments content list of Payment
+
+declaration scope RoyaltyDeductibility:
+  input payment content Payment
+  internal payer_country content Jurisdiction
+  internal receiver_country content Jurisdiction
+  internal eu_royalty_deductible content boolean
+  internal us_royalty_deductible content boolean
+  output deductible_amount content money
 
 declaration scope CorporateTaxComputation:
   input entity content Entity
@@ -57,22 +59,52 @@ declaration scope GroupTaxOutcome:
   output total_group_tax content money
 ```
 
+```catala
+scope RoyaltyDeductibility:
+  definition payer_country equals
+    payment.payer.tax_residence
 
+  definition receiver_country equals
+    payment.receiver.tax_residence
+
+scope RoyaltyDeductibility:
+  definition eu_royalty_deductible equals
+    (payer_country = Ireland and receiver_country = Netherlands)
+    or (payer_country = Netherlands and receiver_country = Ireland)
+    or (payer_country = Ireland and receiver_country = Germany)
+    or (payer_country = Germany and receiver_country = Ireland)
+    or (payer_country = Netherlands and receiver_country = Germany)
+    or (payer_country = Germany and receiver_country = Netherlands)
+
+scope RoyaltyDeductibility:
+  definition us_royalty_deductible equals
+    payer_country = US
+
+scope RoyaltyDeductibility:
+  definition deductible_amount equals
+    if eu_royalty_deductible then
+      payment.amount
+    else if us_royalty_deductible then
+      payment.amount
+    else
+      $0
+```
 
 ```catala
 scope CorporateTaxComputation:
   definition deductible_payments equals
     Money.sum of
       map each payment among outgoing_payments to
-        if payment.kind with pattern Royalty then
-          payment.amount
-        else $0
+        (output of RoyaltyDeductibility with {
+          -- payment: payment
+        }).deductible_amount
 
 scope CorporateTaxComputation:
   definition tax_base equals
     if gross_revenue - deductible_payments <= $0 then
       $0
-    else gross_revenue - deductible_payments
+    else
+      gross_revenue - deductible_payments
 
 scope CorporateTaxComputation:
   definition tax_rate equals
@@ -82,50 +114,70 @@ scope CorporateTaxComputation:
       -- Bermuda: 0%
       -- US: 21%
       -- Germany: 15%
-  
+
 scope CorporateTaxComputation:
   definition tax_due equals
     tax_base * tax_rate
 ```
 
 ```catala
+
 scope WithholdingTaxComputation:
   definition withholding_rate equals
-    # cannot use pattern matching here due to language bug
-    # with nested pattern matching and generic cases
-    if payment.kind with pattern Royalty then
-      if payment.payer.tax_residence = Ireland then
-        if payment.receiver.tax_residence = Netherlands then
-          0%
-        else if payment.receiver.tax_residence = Bermuda then
-          20%
-        else
-          10%
-      else if payment.payer.tax_residence = Netherlands then
-        if payment.receiver.tax_residence = Bermuda then
-          0%
-        else
-          5%
-      else if payment.payer.tax_residence = Bermuda then
+    match payment.payer.tax_residence with pattern
+    -- Ireland:
+      if payment.receiver.tax_residence = Netherlands then
         0%
-      else if payment.payer.tax_residence = US then
+      else if payment.receiver.tax_residence = Germany then
+        0%
+      else if payment.receiver.tax_residence = Bermuda then
+        20%
+      else
         10%
+
+    -- Netherlands:
+      if payment.receiver.tax_residence = Ireland then
+        0%
+      else if payment.receiver.tax_residence = Germany then
+        0%
+      else if payment.receiver.tax_residence = Bermuda then
+        0%
+      else
+        5%
+
+    -- Bermuda:
+      0%
+
+    -- US:
+      if payment.receiver.tax_residence = Ireland then
+        0%
+      else if payment.receiver.tax_residence = Netherlands then
+        0%
+      else if payment.receiver.tax_residence = Germany then
+        0%
+      else
+        10%
+
+    -- Germany:
+      if payment.receiver.tax_residence = Ireland then
+        0%
+      else if payment.receiver.tax_residence = Netherlands then
+        0%
       else
         15%
-    else
-      0%
 
 scope WithholdingTaxComputation:
   definition withholding_tax_due equals
     payment.amount * withholding_rate
 ```
-
 ```catala
 scope EntityTaxOutcome:
   definition corporate_tax_computation.entity equals
     entity
+
   definition corporate_tax_computation.gross_revenue equals
     gross_revenue
+
   definition corporate_tax_computation.outgoing_payments equals
     outgoing_payments
 
@@ -155,33 +207,58 @@ scope GroupTaxOutcome:
 ```
 
 ```catala
-declaration scope TestCorporateTaxComputation:
-  output computation content CorporateTaxComputation
+declaration scope TestRoyaltyDeductibility:
+  output computation content RoyaltyDeductibility
 
-scope TestCorporateTaxComputation:
+scope TestRoyaltyDeductibility:
   definition computation equals
-    output of CorporateTaxComputation with {
-      -- entity: 
-        Entity {
-          -- incorporation_jurisdiction: Ireland
-          -- tax_residence: Ireland
-        }
-      -- gross_revenue: $100
-      -- outgoing_payments:
-        [ Payment {
+    output of RoyaltyDeductibility with {
+      -- payment:
+        Payment {
           -- payer:
             Entity {
-              -- incorporation_jurisdiction: Netherlands
-              -- tax_residence: Netherlands
+              -- incorporation_jurisdiction: Ireland
+              -- tax_residence: Ireland
             }
           -- receiver:
             Entity {
               -- incorporation_jurisdiction: Netherlands
               -- tax_residence: Netherlands
             }
+          -- amount: $90
+        }
+    }
+```
+
+```catala
+declaration scope TestCorporateTaxComputation:
+  output computation content CorporateTaxComputation
+
+scope TestCorporateTaxComputation:
+  definition computation equals
+    output of CorporateTaxComputation with {
+      -- entity:
+        Entity {
+          -- incorporation_jurisdiction: Ireland
+          -- tax_residence: Ireland
+        }
+      -- gross_revenue: $100
+      -- outgoing_payments:
+        [
+          Payment {
+            -- payer:
+              Entity {
+                -- incorporation_jurisdiction: Ireland
+                -- tax_residence: Ireland
+              }
+            -- receiver:
+              Entity {
+                -- incorporation_jurisdiction: Netherlands
+                -- tax_residence: Netherlands
+              }
             -- amount: $90
-            -- kind: Royalty
-        }]
+          }
+        ]
     }
 ```
 
@@ -205,7 +282,6 @@ scope TestWithholding:
               -- tax_residence: Netherlands
             }
           -- amount: $90
-          -- kind: Royalty
         }
     }
 ```
@@ -237,7 +313,6 @@ scope TestEntityTaxOutcome:
                 -- tax_residence: Netherlands
               }
             -- amount: $90
-            -- kind: Royalty
           }
         ]
     }
