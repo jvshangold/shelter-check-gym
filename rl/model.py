@@ -43,6 +43,12 @@ class PolicyValueNet(nn.Module):
             nn.Linear(embed_dim, 1)
         )
 
+        self.company_type_head = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, 2)
+        )
+
         # value head
 
         self.value_head = nn.Sequential(
@@ -57,6 +63,7 @@ class PolicyValueNet(nn.Module):
         action_logits = self.action_type_head(graph_embedding)
         incorporation_logits = self.incorporation_head(graph_embedding)
         management_logits = self.management_head(graph_embedding)
+        company_type_logits = self.company_type_head(graph_embedding)
         
         g = graph_embedding.expand(entity_embeddings.size(0), -1) # shape(num_entities, embed_dim)
         node_inputs = torch.cat([entity_embeddings, g], dim=-1)
@@ -72,6 +79,7 @@ class PolicyValueNet(nn.Module):
             "dst_logits": dst_logits,
             "incorporation_logits": incorporation_logits,
             "management_logits": management_logits,
+            "company_type_logits": company_type_logits,
             "value": value
 
         }

@@ -27,6 +27,7 @@ def evaluate_action(model, obs, action, masks=None):
     dst_mask = None if masks is None else masks.get("dst")
     incorporation_mask = None if masks is None else masks.get("incorporation")
     management_mask = None if masks is None else masks.get("management")
+    company_type_mask = None if masks is None else masks.get("company_type")
 
     # can we still add a child
     dist_action = masked_categorical(out["action_logits"], action_mask)
@@ -49,6 +50,10 @@ def evaluate_action(model, obs, action, masks=None):
         dist_mgmt = masked_categorical(out["management_logits"], management_mask)
         log_prob = log_prob + dist_mgmt.log_prob(action["management"])
         entropy = entropy + dist_mgmt.entropy()
+    if "company_type" in action and action["company_type"] is not None:
+        dist_cmp_type = masked_categorical(out["company_type_logits"], company_type_mask)
+        log_prob = log_prob + dist_cmp_type.log_prob(action["company_type"])
+        entropy = entropy + dist_cmp_type.entropy()
 
     return log_prob, entropy, out["value"]
 

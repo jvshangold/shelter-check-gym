@@ -10,8 +10,6 @@ import sys
 
 from graphviz import Digraph
 
-import random
-
 sys.path.append("formalizations/_target/tax_rules")
 sys.path.append("formalizations/_build/libcatala/python")
 
@@ -242,7 +240,12 @@ class TaxEnv(gym.Env):
             return False
 
         for _, entity_id in self.idx_to_entity.items():
-            if entity_id != self.state.ip_owner:
+            entity = self.state.entities[entity_id]
+
+            if (
+                entity_id != self.state.ip_owner
+                and entity.company_type == "Holding"
+            ):
                 return True
 
         return False

@@ -63,7 +63,11 @@ def make_transfer_dst_mask(env, device):
 
     mask = []
     for i in range(len(env.idx_to_entity)):
-        mask.append(i != owner_idx)
+        entity_id = env.idx_to_entity[i]
+        entity = env.state.entities[entity_id]
+        
+        mask.append(i != owner_idx
+                    and entity.company_type == "Holding")
 
     return torch.tensor(mask, dtype=torch.bool, device=device)
 
@@ -90,6 +94,7 @@ def sample_action(model, env, obs, device):
         "dst": None,
         "incorporation": None,
         "management": None,
+        "company_type": None
     }
 
     used_masks = {
@@ -109,17 +114,23 @@ def sample_action(model, env, obs, device):
         dist_mgmt = masked_categorical(out["management_logits"])
         management = dist_mgmt.sample()
 
+        dist_cmp_type = masked_categorical(out["company_type_logits"])
+        company_type = dist_cmp_type.sample()
+
         log_prob += dist_parent.log_prob(parent)
         log_prob += dist_incorp.log_prob(incorporation)
         log_prob += dist_mgmt.log_prob(management)
+        log_prob += dist_cmp_type.log_prob(company_type)
 
         entropy += dist_parent.entropy()
         entropy += dist_incorp.entropy()
         entropy += dist_mgmt.entropy()
+        entropy += dist_cmp_type.entropy()
 
         action["src"] = parent
         action["incorporation"] = incorporation
         action["management"] = management
+        action["company_type"] = company_type
 
         used_masks["src"] = parent_mask
 
@@ -175,6 +186,7 @@ def action_dict_to_env_action(action):
         int(action["dst"].item()) if action["dst"] is not None else 0,
         int(action["incorporation"].item()) if action["incorporation"] is not None else 0,
         int(action["management"].item()) if action["management"] is not None else 0,
+        int(action["company_type"].item()) if action["company_type"] is not None else 0
     )
 
 

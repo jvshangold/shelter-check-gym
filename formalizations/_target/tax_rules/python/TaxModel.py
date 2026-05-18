@@ -389,8 +389,137 @@ def royalty_deductibility(royalty_deductibility_in:RoyaltyDeductibilityIn):
     payment = (royalty_deductibility_in.payment_in)
     receiver_country = (payment.receiver.tax_residence)
     payer_country = (payment.payer.tax_residence)
-    us_royalty_deductible = ((payer_country == Jurisdiction(Jurisdiction_Code.US, Unit())))
-    eu_royalty_deductible = ((((payer_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Germany, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Germany, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Ireland, Unit()))) or (((payer_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Germany, Unit()))) or ((payer_country == Jurisdiction(Jurisdiction_Code.Germany, Unit())) and (receiver_country == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())))))))))
+    if payer_country.code == Jurisdiction_Code.Ireland:
+        us_royalty_deductible = (False)
+    elif payer_country.code == Jurisdiction_Code.Bermuda:
+        us_royalty_deductible = (False)
+    elif payer_country.code == Jurisdiction_Code.Netherlands:
+        us_royalty_deductible = (False)
+    elif payer_country.code == Jurisdiction_Code.US:
+        us_royalty_deductible = (True)
+    elif payer_country.code == Jurisdiction_Code.Germany:
+        us_royalty_deductible = (False)
+    if payer_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__1 = (True)
+    elif payer_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__1 = (False)
+    elif payer_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__1 = (False)
+    elif payer_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__1 = (False)
+    elif payer_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__1 = (False)
+    if receiver_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__2 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__2 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__2 = (True)
+    elif receiver_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__2 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__2 = (False)
+    if payer_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__3 = (False)
+    elif payer_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__3 = (False)
+    elif payer_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__3 = (True)
+    elif payer_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__3 = (False)
+    elif payer_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__3 = (False)
+    if receiver_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__4 = (True)
+    elif receiver_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__4 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__4 = (False)
+    elif receiver_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__4 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__4 = (False)
+    if payer_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__5 = (True)
+    elif payer_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__5 = (False)
+    elif payer_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__5 = (False)
+    elif payer_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__5 = (False)
+    elif payer_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__5 = (False)
+    if receiver_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__6 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__6 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__6 = (False)
+    elif receiver_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__6 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__6 = (True)
+    if payer_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__7 = (False)
+    elif payer_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__7 = (False)
+    elif payer_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__7 = (False)
+    elif payer_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__7 = (False)
+    elif payer_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__7 = (True)
+    if receiver_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__8 = (True)
+    elif receiver_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__8 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__8 = (False)
+    elif receiver_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__8 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__8 = (False)
+    if payer_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__9 = (False)
+    elif payer_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__9 = (False)
+    elif payer_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__9 = (True)
+    elif payer_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__9 = (False)
+    elif payer_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__9 = (False)
+    if receiver_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__10 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__10 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__10 = (False)
+    elif receiver_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__10 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__10 = (True)
+    if payer_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__11 = (False)
+    elif payer_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__11 = (False)
+    elif payer_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__11 = (False)
+    elif payer_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__11 = (False)
+    elif payer_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__11 = (True)
+    if receiver_country.code == Jurisdiction_Code.Ireland:
+        eu_royalty_deductible__12 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Bermuda:
+        eu_royalty_deductible__12 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Netherlands:
+        eu_royalty_deductible__12 = (True)
+    elif receiver_country.code == Jurisdiction_Code.US:
+        eu_royalty_deductible__12 = (False)
+    elif receiver_country.code == Jurisdiction_Code.Germany:
+        eu_royalty_deductible__12 = (False)
+    eu_royalty_deductible = (((eu_royalty_deductible__1 and eu_royalty_deductible__2) or ((eu_royalty_deductible__3 and eu_royalty_deductible__4) or ((eu_royalty_deductible__5 and eu_royalty_deductible__6) or ((eu_royalty_deductible__7 and eu_royalty_deductible__8) or ((eu_royalty_deductible__9 and eu_royalty_deductible__10) or (eu_royalty_deductible__11 and eu_royalty_deductible__12)))))))
     if eu_royalty_deductible:
         deductible_amount = (payment.amount)
     elif us_royalty_deductible:
@@ -403,41 +532,169 @@ def withholding_tax_computation(withholding_tax_computation_in:WithholdingTaxCom
     payment = (withholding_tax_computation_in.payment_in)
     withholding_rate__1 = (payment.payer.tax_residence)
     if withholding_rate__1.code == Jurisdiction_Code.Ireland:
-        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
+        withholding_rate__3 = (payment.receiver.tax_residence)
+        if withholding_rate__3.code == Jurisdiction_Code.Ireland:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Bermuda:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Netherlands:
+            withholding_rate__2 = (True)
+        elif withholding_rate__3.code == Jurisdiction_Code.US:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Germany:
+            withholding_rate__2 = (False)
+        if withholding_rate__2:
             withholding_rate = (decimal_of_string("0"))
-        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Germany, Unit())):
-            withholding_rate = (decimal_of_string("0"))
-        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Bermuda, Unit())):
-            withholding_rate = (decimal_of_string("1/5"))
         else:
-            withholding_rate = (decimal_of_string("1/10"))
+            withholding_rate__5 = (payment.receiver.tax_residence)
+            if withholding_rate__5.code == Jurisdiction_Code.Ireland:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Bermuda:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Netherlands:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.US:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Germany:
+                withholding_rate__4 = (True)
+            if withholding_rate__4:
+                withholding_rate = (decimal_of_string("0"))
+            else:
+                withholding_rate__7 = (payment.receiver.tax_residence)
+                if withholding_rate__7.code == Jurisdiction_Code.Ireland:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.Bermuda:
+                    withholding_rate__6 = (True)
+                elif withholding_rate__7.code == Jurisdiction_Code.Netherlands:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.US:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.Germany:
+                    withholding_rate__6 = (False)
+                if withholding_rate__6:
+                    withholding_rate = (decimal_of_string("1/5"))
+                else:
+                    withholding_rate = (decimal_of_string("1/10"))
     elif withholding_rate__1.code == Jurisdiction_Code.Bermuda:
         withholding_rate = (decimal_of_string("0"))
     elif withholding_rate__1.code == Jurisdiction_Code.Netherlands:
-        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Ireland, Unit())):
-            withholding_rate = (decimal_of_string("0"))
-        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Germany, Unit())):
-            withholding_rate = (decimal_of_string("0"))
-        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Bermuda, Unit())):
+        withholding_rate__3 = (payment.receiver.tax_residence)
+        if withholding_rate__3.code == Jurisdiction_Code.Ireland:
+            withholding_rate__2 = (True)
+        elif withholding_rate__3.code == Jurisdiction_Code.Bermuda:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Netherlands:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.US:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Germany:
+            withholding_rate__2 = (False)
+        if withholding_rate__2:
             withholding_rate = (decimal_of_string("0"))
         else:
-            withholding_rate = (decimal_of_string("1/20"))
+            withholding_rate__5 = (payment.receiver.tax_residence)
+            if withholding_rate__5.code == Jurisdiction_Code.Ireland:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Bermuda:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Netherlands:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.US:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Germany:
+                withholding_rate__4 = (True)
+            if withholding_rate__4:
+                withholding_rate = (decimal_of_string("0"))
+            else:
+                withholding_rate__7 = (payment.receiver.tax_residence)
+                if withholding_rate__7.code == Jurisdiction_Code.Ireland:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.Bermuda:
+                    withholding_rate__6 = (True)
+                elif withholding_rate__7.code == Jurisdiction_Code.Netherlands:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.US:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.Germany:
+                    withholding_rate__6 = (False)
+                if withholding_rate__6:
+                    withholding_rate = (decimal_of_string("0"))
+                else:
+                    withholding_rate = (decimal_of_string("1/20"))
     elif withholding_rate__1.code == Jurisdiction_Code.US:
-        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Ireland, Unit())):
-            withholding_rate = (decimal_of_string("0"))
-        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
-            withholding_rate = (decimal_of_string("0"))
-        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Germany, Unit())):
+        withholding_rate__3 = (payment.receiver.tax_residence)
+        if withholding_rate__3.code == Jurisdiction_Code.Ireland:
+            withholding_rate__2 = (True)
+        elif withholding_rate__3.code == Jurisdiction_Code.Bermuda:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Netherlands:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.US:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Germany:
+            withholding_rate__2 = (False)
+        if withholding_rate__2:
             withholding_rate = (decimal_of_string("0"))
         else:
-            withholding_rate = (decimal_of_string("1/10"))
+            withholding_rate__5 = (payment.receiver.tax_residence)
+            if withholding_rate__5.code == Jurisdiction_Code.Ireland:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Bermuda:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Netherlands:
+                withholding_rate__4 = (True)
+            elif withholding_rate__5.code == Jurisdiction_Code.US:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Germany:
+                withholding_rate__4 = (False)
+            if withholding_rate__4:
+                withholding_rate = (decimal_of_string("0"))
+            else:
+                withholding_rate__7 = (payment.receiver.tax_residence)
+                if withholding_rate__7.code == Jurisdiction_Code.Ireland:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.Bermuda:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.Netherlands:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.US:
+                    withholding_rate__6 = (False)
+                elif withholding_rate__7.code == Jurisdiction_Code.Germany:
+                    withholding_rate__6 = (True)
+                if withholding_rate__6:
+                    withholding_rate = (decimal_of_string("0"))
+                else:
+                    withholding_rate = (decimal_of_string("1/10"))
     elif withholding_rate__1.code == Jurisdiction_Code.Germany:
-        if (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Ireland, Unit())):
-            withholding_rate = (decimal_of_string("0"))
-        elif (payment.receiver.tax_residence == Jurisdiction(Jurisdiction_Code.Netherlands, Unit())):
+        withholding_rate__3 = (payment.receiver.tax_residence)
+        if withholding_rate__3.code == Jurisdiction_Code.Ireland:
+            withholding_rate__2 = (True)
+        elif withholding_rate__3.code == Jurisdiction_Code.Bermuda:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Netherlands:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.US:
+            withholding_rate__2 = (False)
+        elif withholding_rate__3.code == Jurisdiction_Code.Germany:
+            withholding_rate__2 = (False)
+        if withholding_rate__2:
             withholding_rate = (decimal_of_string("0"))
         else:
-            withholding_rate = (decimal_of_string("3/20"))
+            withholding_rate__5 = (payment.receiver.tax_residence)
+            if withholding_rate__5.code == Jurisdiction_Code.Ireland:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Bermuda:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Netherlands:
+                withholding_rate__4 = (True)
+            elif withholding_rate__5.code == Jurisdiction_Code.US:
+                withholding_rate__4 = (False)
+            elif withholding_rate__5.code == Jurisdiction_Code.Germany:
+                withholding_rate__4 = (False)
+            if withholding_rate__4:
+                withholding_rate = (decimal_of_string("0"))
+            else:
+                withholding_rate = (decimal_of_string("3/20"))
     withholding_tax_due = ((payment.amount * withholding_rate))
     return WithholdingTaxComputation(withholding_tax_due = withholding_tax_due)
 

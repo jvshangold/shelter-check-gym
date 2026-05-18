@@ -25,6 +25,10 @@ def make_money(amount: int):
     return catala_runtime.Money(catala_runtime.Integer(amount))
 
 
+def money_value(money) -> int:
+    return int(money.value.value)
+
+
 def make_payment(payer, receiver, amount: int):
     return TaxModel.Payment(
         payer=payer,
@@ -42,7 +46,7 @@ def test_royalty_deductibility_ireland_to_netherlands():
         TaxModel.RoyaltyDeductibilityIn(payment_in=payment)
     )
 
-    assert result.deductible_amount == make_money(9000)
+    assert money_value(result.deductible_amount) == 9000
 
 
 def test_royalty_deductibility_ireland_to_bermuda_not_deductible():
@@ -54,7 +58,7 @@ def test_royalty_deductibility_ireland_to_bermuda_not_deductible():
         TaxModel.RoyaltyDeductibilityIn(payment_in=payment)
     )
 
-    assert result.deductible_amount == make_money(0)
+    assert money_value(result.deductible_amount) == 0
 
 
 def test_withholding_ireland_to_netherlands_royalty_zero():
@@ -66,7 +70,7 @@ def test_withholding_ireland_to_netherlands_royalty_zero():
         TaxModel.WithholdingTaxComputationIn(payment_in=payment)
     )
 
-    assert result.withholding_tax_due == make_money(0)
+    assert money_value(result.withholding_tax_due) == 0
 
 
 def test_withholding_ireland_to_bermuda_royalty_20_percent():
@@ -78,7 +82,7 @@ def test_withholding_ireland_to_bermuda_royalty_20_percent():
         TaxModel.WithholdingTaxComputationIn(payment_in=payment)
     )
 
-    assert result.withholding_tax_due == make_money(1800)
+    assert money_value(result.withholding_tax_due) == 1800
 
 
 def test_withholding_us_to_bermuda_royalty_10_percent():
@@ -90,7 +94,7 @@ def test_withholding_us_to_bermuda_royalty_10_percent():
         TaxModel.WithholdingTaxComputationIn(payment_in=payment)
     )
 
-    assert result.withholding_tax_due == make_money(900)
+    assert money_value(result.withholding_tax_due) == 900
 
 
 def test_withholding_us_to_netherlands_royalty_zero():
@@ -102,7 +106,7 @@ def test_withholding_us_to_netherlands_royalty_zero():
         TaxModel.WithholdingTaxComputationIn(payment_in=payment)
     )
 
-    assert result.withholding_tax_due == make_money(0)
+    assert money_value(result.withholding_tax_due) == 0
 
 
 def test_corporate_tax_ireland_100_less_90_royalty():
@@ -118,7 +122,7 @@ def test_corporate_tax_ireland_100_less_90_royalty():
         )
     )
 
-    assert result.tax_due == make_money(125)
+    assert money_value(result.tax_due) == 125
 
 
 def test_corporate_tax_ireland_to_bermuda_no_deduction():
@@ -134,10 +138,10 @@ def test_corporate_tax_ireland_to_bermuda_no_deduction():
         )
     )
 
-    # Ireland -> Bermuda royalty is not deductible under RoyaltyDeductibility.
-    # So tax base remains 10000.
-    # 10000 * 12.5% = 1250.
-    assert result.tax_due == make_money(1250)
+    # Ireland -> Bermuda royalty is not deductible.
+    # tax base = 10000
+    # 10000 * 12.5% = 1250
+    assert money_value(result.tax_due) == 1250
 
 
 def test_entity_tax_outcome_ireland_to_netherlands():
@@ -154,12 +158,12 @@ def test_entity_tax_outcome_ireland_to_netherlands():
     )
 
     # Corporate tax:
-    # gross revenue 10000 - deductible royalty 9000 = 1000
+    # 10000 - 9000 = 1000
     # 1000 * 12.5% = 125
     #
     # Withholding:
     # Ireland -> Netherlands = 0
-    assert result.total_tax == make_money(125)
+    assert money_value(result.total_tax) == 125
 
 
 def test_entity_tax_outcome_ireland_to_bermuda():
@@ -185,7 +189,7 @@ def test_entity_tax_outcome_ireland_to_bermuda():
     # 9000 * 20% = 1800
     #
     # total = 1250 + 1800 = 3050
-    assert result.total_tax == make_money(3050)
+    assert money_value(result.total_tax) == 3050
 
 
 def test_group_tax_outcome_single_entity():
@@ -203,7 +207,7 @@ def test_group_tax_outcome_single_entity():
         TaxModel.GroupTaxOutcomeIn(entity_inputs_in=[entity_input])
     )
 
-    assert result.total_group_tax == make_money(125)
+    assert money_value(result.total_group_tax) == 125
 
 
 def test_dutch_sandwich_beats_direct_payment():
@@ -243,4 +247,4 @@ def test_dutch_sandwich_beats_direct_payment():
         )
     )
 
-    assert sandwich.total_group_tax < direct.total_tax
+    assert money_value(sandwich.total_group_tax) < money_value(direct.total_tax)

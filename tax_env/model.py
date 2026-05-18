@@ -10,7 +10,7 @@ class GNN(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels):    
         super().__init__()
         
-        self.entity_linear = nn.Linear(1, hidden_channels)
+        self.entity_linear = nn.Linear(3, hidden_channels)
         self.jurisdiction_linear = nn.Linear(1, hidden_channels)
         
         self.conv1 = HeteroConv({

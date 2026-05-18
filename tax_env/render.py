@@ -36,7 +36,11 @@ def build_graph(state: WorldState):
 
         # node feature matrix
         revenue = state.get_company_revenue(eid)
-        entity_x.append([revenue])
+
+        # is_holding, is_operating one_hot
+        is_holding = 1.0 if ent.company_type == "Holding" else 0.0
+        is_operating = 1.0 if ent.company_type == "Operating" else 0.0
+        entity_x.append([revenue, is_holding, is_operating])
 
         # subsidiary graph connectivity matrix
         if ent.parent_id is not None and ent.parent_id in entity_index:

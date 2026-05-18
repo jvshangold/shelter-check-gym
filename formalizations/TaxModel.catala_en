@@ -69,16 +69,34 @@ scope RoyaltyDeductibility:
 
 scope RoyaltyDeductibility:
   definition eu_royalty_deductible equals
-    (payer_country = Ireland and receiver_country = Netherlands)
-    or (payer_country = Netherlands and receiver_country = Ireland)
-    or (payer_country = Ireland and receiver_country = Germany)
-    or (payer_country = Germany and receiver_country = Ireland)
-    or (payer_country = Netherlands and receiver_country = Germany)
-    or (payer_country = Germany and receiver_country = Netherlands)
+    (
+      payer_country with pattern Ireland
+      and receiver_country with pattern Netherlands
+    )
+    or (
+      payer_country with pattern Netherlands
+      and receiver_country with pattern Ireland
+    )
+    or (
+      payer_country with pattern Ireland
+      and receiver_country with pattern Germany
+    )
+    or (
+      payer_country with pattern Germany
+      and receiver_country with pattern Ireland
+    )
+    or (
+      payer_country with pattern Netherlands
+      and receiver_country with pattern Germany
+    )
+    or (
+      payer_country with pattern Germany
+      and receiver_country with pattern Netherlands
+    )
 
 scope RoyaltyDeductibility:
   definition us_royalty_deductible equals
-    payer_country = US
+    payer_country with pattern US
 
 scope RoyaltyDeductibility:
   definition deductible_amount equals
@@ -126,21 +144,21 @@ scope WithholdingTaxComputation:
   definition withholding_rate equals
     match payment.payer.tax_residence with pattern
     -- Ireland:
-      if payment.receiver.tax_residence = Netherlands then
+      if payment.receiver.tax_residence with pattern Netherlands then
         0%
-      else if payment.receiver.tax_residence = Germany then
+      else if payment.receiver.tax_residence with pattern Germany then
         0%
-      else if payment.receiver.tax_residence = Bermuda then
+      else if payment.receiver.tax_residence with pattern Bermuda then
         20%
       else
         10%
 
     -- Netherlands:
-      if payment.receiver.tax_residence = Ireland then
+      if payment.receiver.tax_residence with pattern Ireland then
         0%
-      else if payment.receiver.tax_residence = Germany then
+      else if payment.receiver.tax_residence with pattern Germany then
         0%
-      else if payment.receiver.tax_residence = Bermuda then
+      else if payment.receiver.tax_residence with pattern Bermuda then
         0%
       else
         5%
@@ -149,19 +167,19 @@ scope WithholdingTaxComputation:
       0%
 
     -- US:
-      if payment.receiver.tax_residence = Ireland then
+      if payment.receiver.tax_residence with pattern Ireland then
         0%
-      else if payment.receiver.tax_residence = Netherlands then
+      else if payment.receiver.tax_residence with pattern Netherlands then
         0%
-      else if payment.receiver.tax_residence = Germany then
+      else if payment.receiver.tax_residence with pattern Germany then
         0%
       else
         10%
 
     -- Germany:
-      if payment.receiver.tax_residence = Ireland then
+      if payment.receiver.tax_residence with pattern Ireland then
         0%
-      else if payment.receiver.tax_residence = Netherlands then
+      else if payment.receiver.tax_residence with pattern Netherlands then
         0%
       else
         15%
