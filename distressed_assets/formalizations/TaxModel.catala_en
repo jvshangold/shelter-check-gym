@@ -1,0 +1,45 @@
+> Module TaxModel
+
+```catala
+declaration enumeration TaxResidence:
+  -- US
+  -- Foreign
+
+declaration structure Individual:
+  data tax_residence content TaxResidence
+
+declaration structure Asset:
+  data basis content money
+  data fair_market_value content money
+  data sale_price content money
+
+declaration structure TrustArrangement:
+  data taxpayer content Individual
+  data transferor content Individual
+  data asset content Asset
+  data taxpayer_has_section_678_power content boolean
+  data taxpayer_bore_economic_loss content boolean
+
+declaration scope DistressedAssetTrustComputation:
+  input arrangement content TrustArrangement
+  input tax_rate content decimal
+
+  internal realized_loss content money
+  internal claimed_loss content money
+
+  output would_be_tax_savings content money
+```
+```catala
+scope DistressedAssetTrustComputation:
+  definition realized_loss equals
+    arrangement.asset.basis - arrangement.asset.sale_price
+
+  definition claimed_loss equals
+    if arrangement.taxpayer_has_section_678_power then
+      realized_loss
+    else
+      $0
+
+  definition would_be_tax_savings equals
+    claimed_loss * tax_rate
+```

@@ -4,6 +4,6 @@ __pycache__/
 .vscode/
 */.DS_Store
 *.pt
-.pytest_cache
+.pytest_mvcache
 .DS_Store
 
