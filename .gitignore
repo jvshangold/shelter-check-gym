@@ -6,4 +6,5 @@ __pycache__/
 *.pt
 .pytest_mvcache
 .DS_Store
+_build
 
