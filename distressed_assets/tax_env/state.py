@@ -13,11 +13,15 @@ class AssetKind(Enum):
     CASH = "Cash"
     PROPERTY = "Property"
 
+class OwnerType(Enum):
+    TRUST = "Trust"
+    INDIVIDUAL = "Individual"
 
 @dataclass
 class Individual:
     id: str
     tax_residence: TaxResidence
+    income: float | None = None
 
 
 @dataclass
@@ -26,9 +30,19 @@ class Asset:
     kind: AssetKind
     basis: float
     fair_market_value: float
-    owner_trust_id: str
+    owner_type: OwnerType
+    owner_id: str
+    sale_price: float | None = None
 
-
+    @property
+    def is_sold(self) -> bool:
+        return self.sale_price is not None
+    
+    @property
+    def realized_loss(self) -> float:
+        if self.sale_price is None:
+            return 0.0
+        return max(0.0, self.basis - self.sale_price)
 @dataclass
 class Trust:
     id: str
@@ -145,29 +159,13 @@ class WorldState:
         ]
 
     @classmethod
-    def initial_distressed_asset_state(cls) -> WorldState:
+    def initial_state(cls) -> WorldState:
         state = cls()
 
-        state.add_individual("FP", TaxResidence.FOREIGN)
         state.add_individual("T", TaxResidence.US)
         state.taxpayer_id = "T"
 
-        state.add_trust("root_trust", beneficiary_id="FP")
-
-        state.add_asset(
-            asset_id="distressed_asset",
-            kind=AssetKind.PROPERTY,
-            basis=100.0,
-            fair_market_value=20.0,
-            owner_trust_id="root_trust",
-        )
-
-        state.add_asset(
-            asset_id="cash",
-            kind=AssetKind.CASH,
-            basis=20.0,
-            fair_market_value=20.0,
-            owner_trust_id="root_trust",
-        )
+        state.add_trust("root_trust")
 
         return state
+    
