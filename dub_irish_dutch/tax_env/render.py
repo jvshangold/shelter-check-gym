@@ -70,7 +70,6 @@ def build_graph(state: WorldState):
     if has_subsidiary:
         data["entity", "has_subsidiary", "entity"].edge_index = torch.tensor(has_subsidiary, dtype=torch.long).t().contiguous()
     else:
-
         data["entity", "has_subsidiary", "entity"].edge_index = torch.zeros((2, 0), dtype=torch.long)
     
     if licenses_from:
