@@ -35,3 +35,5 @@
 15	68	1779283596836951600	formalizations/_build/formalizations/python/TaxModel.py	540922439638f5eb
 10	15	1779287175827703211	formalizations/_build/formalizations/TaxModel.catala_en	5220d39d97390f80
 16	87	1779287175833830375	formalizations/_build/formalizations/python/TaxModel.py	540922439638f5eb
+13	19	1779888873603478414	formalizations/_build/formalizations/DistressedAssetTaxModel.catala_en	28bb57b74aaf5b02
+20	111	1779888873609761676	formalizations/_build/formalizations/python/DistressedAssetTaxModel.py	e07234165559a348

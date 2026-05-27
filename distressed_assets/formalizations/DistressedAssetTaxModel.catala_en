@@ -1,4 +1,4 @@
-> Module TaxModel
+> Module DistressedAssetTaxModel
 
 ```catala
 declaration enumeration TaxResidence:

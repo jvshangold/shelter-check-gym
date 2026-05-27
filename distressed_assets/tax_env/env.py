@@ -7,10 +7,10 @@ from gymnasium import Space, spaces
 from .state import WorldState, OwnerType, AssetKind, TaxResidence
 from .render import build_graph
 
-sys.path.append("distressed_assets/formalizations/_target/tax_rules")
+sys.path.append("distressed_assets/formalizations/_target/distressed_tax_rules")
 sys.path.append("distressed_assets/formalizations/_build/libcatala/python")
 
-from python import TaxModel
+from python import DistressedAssetTaxModel as TaxModel
 from python import catala_runtime
 
 
@@ -27,10 +27,10 @@ class TaxEnv(gym.Env):
         self.observation_space: Space = spaces.Dict({})
 
         self.action_space: Space = spaces.MultiDiscrete([
-            4,                # action_type
-            MAX_TRUSTS,       # arg_1
-            MAX_ASSETS,       # arg_2
-            MAX_INDIVIDUALS,  # arg_3
+            4,
+            MAX_TRUSTS,
+            MAX_ASSETS,
+            MAX_INDIVIDUALS,
         ])
 
         self.max_trusts = MAX_TRUSTS
@@ -67,7 +67,7 @@ class TaxEnv(gym.Env):
                 self._sell_asset(asset_idx=arg_2)
 
             elif action_type == GIVE_VESTING_POWER:
-                self._give_vesting_power(trust_idx=arg_1)
+                self._give_vesting_power(trust_idx=arg_1, individual_idx=arg_3)
 
             else:
                 raise ValueError("Unknown action type")
@@ -123,13 +123,13 @@ class TaxEnv(gym.Env):
 
             if not asset.is_sold:
                 continue
-            
+
             if asset.owner_type != OwnerType.TRUST:
                 continue
 
             trust = self.state.trusts[asset.owner_id]
 
-            if trust.section_678_power_holder_id != self.state.taxpayer_id:
+            if trust.section_678_power_holder_id is None:
                 continue
 
             total += self._compute_catala_savings(
@@ -152,14 +152,11 @@ class TaxEnv(gym.Env):
             "assets": self.state.assets,
         }
 
-    """Helper functions"""
-
     def _make_subtrust(self, parent_trust_idx: int) -> None:
         if len(self.state.trusts) >= self.max_trusts:
             raise ValueError("Max number of trusts reached")
 
         parent_id = self._get_trust_id(parent_trust_idx)
-
         trust_id = f"sub_trust_{len(self.state.trusts)}"
 
         self.state.add_trust(
@@ -176,11 +173,14 @@ class TaxEnv(gym.Env):
 
         asset = self.state.assets[asset_id]
 
-        if asset.sale_price is not None:
+        if asset.is_sold:
             raise ValueError("Cannot move an asset after sale")
 
-        asset.owner_type = OwnerType.TRUST
-        asset.owner_id = dst_trust_id
+        self.state.transfer_asset(
+            asset_id=asset_id,
+            new_owner_type=OwnerType.TRUST,
+            new_owner_id=dst_trust_id,
+        )
 
         self._refresh_indices()
 
@@ -191,15 +191,18 @@ class TaxEnv(gym.Env):
         if asset.kind != AssetKind.PROPERTY:
             raise ValueError("Can only sell property assets")
 
-        if asset.sale_price is not None:
+        if asset.is_sold:
             raise ValueError("Asset already sold")
+
+        if asset.owner_type != OwnerType.TRUST:
+            raise ValueError("Asset must be inside a trust before sale")
 
         asset.sale_price = asset.fair_market_value
 
     def _give_vesting_power(self, trust_idx: int, individual_idx: int) -> None:
         trust_id = self._get_trust_id(trust_idx)
         individual_id = self._get_individual_id(individual_idx)
-        
+
         trust = self.state.trusts[trust_id]
 
         if trust.section_678_power_holder_id is not None:
@@ -213,17 +216,9 @@ class TaxEnv(gym.Env):
         if asset is None:
             raise ValueError("No property asset in trust")
 
-        taxpayer_id = self.state.taxpayer_id
-
-        if taxpayer_id is None:
-            raise ValueError("No taxpayer set")
-
-        if not self._individual_has_sufficient_income(individual_id, asset.fair_market_value):
-            raise ValueError("Individual does not have enough income to use asset loss")
-        
         if not self._individual_has_sufficient_cash(individual_id, asset.fair_market_value):
             raise ValueError("Individual does not have enough cash to compensate FP")
-        
+
         foreign_party_id = self._find_foreign_individual_id()
 
         if foreign_party_id is None:
@@ -274,37 +269,32 @@ class TaxEnv(gym.Env):
 
     def _compute_catala_savings(self, asset, power_holder_id: str) -> float:
         power_holder = self.state.individuals[power_holder_id]
-        tax_rate = catala_runtime.Decimal("0.20")
 
-        if power_holder.income is None:
-            income_limit = asset.realized_loss
-        else:
-            income_limit = min(asset.realized_loss, power_holder.income)
-
-        limited_asset = TaxModel.Asset(
-            basis=self._money(asset.sale_price + income_limit),
+        catala_asset = TaxModel.Asset(
+            basis=self._money(asset.basis),
             fair_market_value=self._money(asset.fair_market_value),
             sale_price=self._money(asset.sale_price),
         )
-        
+
         arrangement = TaxModel.TrustArrangement(
             transferor=self._catala_individual(TaxResidence.FOREIGN),
-            taxpayer=self._catala_individual("US"),
-            asset=limited_asset,
+            taxpayer=self._catala_individual(power_holder.tax_residence),
+            asset=catala_asset,
             taxpayer_has_section_678_power=True,
+            taxpayer_bore_economic_loss=False,
         )
 
         result = TaxModel.distressed_asset_trust_computation(
             TaxModel.DistressedAssetTrustComputationIn(
-                arrangement=arrangement,
-                tax_rate=catala_runtime.Decimal("0.20"),
+                arrangement_in=arrangement,
+                tax_rate_in=catala_runtime.Decimal("0.20"),
             )
         )
 
         return self._money_to_float(result.would_be_tax_savings)
 
-    def _catala_individual(self, residence: str):
-        if residence == "US":
+    def _catala_individual(self, residence: TaxResidence):
+        if residence == TaxResidence.US:
             tax_residence = TaxModel.TaxResidence(
                 TaxModel.TaxResidence_Code.US,
                 catala_runtime.Unit(),
@@ -321,7 +311,7 @@ class TaxEnv(gym.Env):
         return catala_runtime.Money(catala_runtime.Integer(int(amount)))
 
     def _money_to_float(self, money) -> float:
-        return float(money.amount.value)
+        return float(money.value.value)
 
     def _find_property_asset_in_trust(self, trust_id: str):
         for asset in self.state.assets.values():
@@ -354,30 +344,23 @@ class TaxEnv(gym.Env):
 
         return None
 
-    def _individual_has_sufficient_income(self, individual_id: str, amount: float) -> bool:
-        individual = self.state.individuals[individual_id]
-        return individual.income is not None and individual.income >= amount
-
     def _individual_has_sufficient_cash(self, individual_id: str, amount: float) -> bool:
         cash = self._find_cash_owned_by_individual(individual_id)
         return cash is not None and cash.fair_market_value >= amount
-    
+
     def _get_trust_id(self, idx: int) -> str:
         if idx not in self.idx_to_trust:
             raise ValueError(f"Invalid trust index: {idx}")
-
         return self.idx_to_trust[idx]
 
     def _get_asset_id(self, idx: int) -> str:
         if idx not in self.idx_to_asset:
             raise ValueError(f"Invalid asset index: {idx}")
-
         return self.idx_to_asset[idx]
 
     def _get_individual_id(self, idx: int) -> str:
         if idx not in self.idx_to_individual:
             raise ValueError(f"Invalid individual index: {idx}")
-
         return self.idx_to_individual[idx]
 
     def _refresh_indices(self) -> None:

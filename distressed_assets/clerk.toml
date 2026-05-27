@@ -4,6 +4,6 @@ build_dir = "formalizations/_build"
 target_dir = "formalizations/_target"
 
 [[target]]
-name = "tax_rules"
-modules = ["TaxModel"]
+name = "distressed_tax_rules"
+modules = ["DistressedAssetTaxModel"]
 backends = ["python"]

@@ -23,7 +23,6 @@ class OwnerType(Enum):
 class Individual:
     id: str
     tax_residence: TaxResidence
-    income: float | None = None
 
 
 @dataclass
@@ -67,13 +66,11 @@ class WorldState:
     def add_individual(
         self,
         individual_id: str,
-        tax_residence: TaxResidence,
-        income: float | None = None,
+        tax_residence: TaxResidence
     ) -> None:
         self.individuals[individual_id] = Individual(
             id=individual_id,
             tax_residence=tax_residence,
-            income=income,
         )
 
     def add_trust(
@@ -194,7 +191,7 @@ class WorldState:
     def initial_state(cls) -> WorldState:
         state = cls()
 
-        state.add_individual("T", TaxResidence.US, income=200.0)
+        state.add_individual("T", TaxResidence.US)
         state.taxpayer_id = "T"
 
         state.add_trust("root_trust")

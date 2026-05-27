@@ -10,7 +10,7 @@ import sys
 
 from graphviz import Digraph
 
-sys.path.append("dub_irish_dutch/formalizations/_target/tax_rules")
+sys.path.append("dub_irish_dutch/formalizations/_target/dutch_tax_rules")
 sys.path.append("dub_irish_dutch/formalizations/_build/libcatala/python")
 
 from python import TaxModel
