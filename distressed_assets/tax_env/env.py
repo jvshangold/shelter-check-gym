@@ -3,6 +3,7 @@ from typing import Dict
 
 import gymnasium as gym
 from gymnasium import Space, spaces
+from graphviz import Digraph
 
 from .state import WorldState, OwnerType, AssetKind, TaxResidence
 from .render import build_graph
@@ -21,7 +22,17 @@ GIVE_VESTING_POWER = 3
 
 
 class TaxEnv(gym.Env):
-    def __init__(self, MAX_TRUSTS=5, MAX_ASSETS=5, MAX_INDIVIDUALS=4, MAX_STEPS=10):
+    def __init__(
+        self,
+        MAX_TRUSTS=5,
+        MAX_ASSETS=5,
+        MAX_INDIVIDUALS=4,
+        MAX_STEPS=10,
+        RANDOM_FOREIGN_PARTY_PROB=0.0,
+        MAX_RANDOM_FOREIGN_PARTIES=None,
+        EXTRA_TRUST_PENALTY=0.01,
+        TRUST_DEPTH_PENALTY=0.02,
+    ):
         super().__init__()
 
         self.observation_space: Space = spaces.Dict({})
@@ -37,6 +48,10 @@ class TaxEnv(gym.Env):
         self.max_assets = MAX_ASSETS
         self.max_individuals = MAX_INDIVIDUALS
         self.max_steps = MAX_STEPS
+        self.random_foreign_party_prob = RANDOM_FOREIGN_PARTY_PROB
+        self.max_random_foreign_parties = MAX_RANDOM_FOREIGN_PARTIES
+        self.extra_trust_penalty = EXTRA_TRUST_PENALTY
+        self.trust_depth_penalty = TRUST_DEPTH_PENALTY
 
         self.state = WorldState.initial_state()
 
@@ -44,6 +59,7 @@ class TaxEnv(gym.Env):
         self.idx_to_asset: Dict[int, str] = {}
         self.idx_to_individual: Dict[int, str] = {}
 
+        self.prev_broad_savings = 0.0
         self.prev_savings = 0.0
         self.steps = 0
 
@@ -77,12 +93,20 @@ class TaxEnv(gym.Env):
             print("Exception:", e)
             invalid_action = True
 
-        current_savings = self.compute_savings()
-        reward = current_savings - self.prev_savings
-        self.prev_savings = current_savings
+        current_desired_savings = self.compute_desired_loophole_savings()
+        current_broad_savings = self.compute_savings()
+        broad_delta = current_broad_savings - self.prev_broad_savings
+
+        reward = broad_delta - self.compute_complexity_penalty()
+
+        self.prev_broad_savings = current_broad_savings
+        self.prev_savings = current_broad_savings
 
         if invalid_action:
             reward -= 1.0
+
+        if current_desired_savings > 0.0 and not invalid_action:
+            terminated = True
 
         self.steps += 1
 
@@ -90,7 +114,11 @@ class TaxEnv(gym.Env):
             truncated = True
 
         obs = self.get_observation()
-        info = {"invalid_action": invalid_action}
+        info = {
+            "invalid_action": invalid_action,
+            "desired_savings": current_desired_savings,
+            "broad_savings": current_broad_savings,
+        }
 
         return obs, reward, terminated, truncated, info
 
@@ -99,8 +127,14 @@ class TaxEnv(gym.Env):
 
         self.state = WorldState.initial_state()
         self.steps = 0
+        self.prev_broad_savings = 0.0
         self.prev_savings = 0.0
 
+        random_foreign_party_prob = self.random_foreign_party_prob
+        if options is not None and "random_foreign_party_prob" in options:
+            random_foreign_party_prob = options["random_foreign_party_prob"]
+
+        self._maybe_add_random_foreign_parties(random_foreign_party_prob)
         self._refresh_indices()
 
         obs = self.get_observation()
@@ -108,10 +142,54 @@ class TaxEnv(gym.Env):
 
         return obs, info
 
+    def _maybe_add_random_foreign_parties(self, probability: float) -> None:
+        if probability <= 0.0:
+            return
+
+        if self.np_random.random() >= probability:
+            return
+
+        available_individual_slots = self.max_individuals - len(self.state.individuals)
+        available_asset_slots = self.max_assets - len(self.state.assets)
+        available_slots = min(available_individual_slots, available_asset_slots)
+
+        if available_slots <= 0:
+            return
+
+        max_count = available_slots
+        if self.max_random_foreign_parties is not None:
+            max_count = min(max_count, self.max_random_foreign_parties)
+
+        count = int(self.np_random.integers(1, max_count + 1))
+
+        for i in range(count):
+            foreign_party_id = f"FP_{i}"
+            asset_id = f"distressed_asset_{i}"
+
+            basis = float(self.np_random.integers(80, 301))
+            fair_market_value = float(
+                self.np_random.integers(10, min(int(basis), 101))
+            )
+
+            self.state.add_individual(foreign_party_id, TaxResidence.FOREIGN)
+            self.state.add_asset(
+                asset_id=asset_id,
+                kind=AssetKind.PROPERTY,
+                basis=basis,
+                fair_market_value=fair_market_value,
+                owner_type=OwnerType.INDIVIDUAL,
+                owner_id=foreign_party_id,
+            )
+
     def compute_reward(self):
-        current_savings = self.compute_savings()
-        reward = current_savings - self.prev_savings
-        self.prev_savings = current_savings
+        current_broad_savings = self.compute_savings()
+        reward = (
+            current_broad_savings
+            - self.prev_broad_savings
+            - self.compute_complexity_penalty()
+        )
+        self.prev_broad_savings = current_broad_savings
+        self.prev_savings = current_broad_savings
         return reward
 
     def compute_savings(self) -> float:
@@ -139,24 +217,139 @@ class TaxEnv(gym.Env):
 
         return total
 
+    def has_desired_loophole_structure(self) -> bool:
+        """
+        The target pattern is a sold distressed property in a direct subtrust of
+        the root trust, with the taxpayer holding section 678 power.
+        """
+        return self.compute_desired_loophole_savings() > 0.0
+
+    def compute_complexity_penalty(self) -> float:
+        extra_trusts = max(0, len(self.state.trusts) - 2)
+        extra_depth = max(0, self.get_max_trust_depth() - 1)
+
+        return (
+            self.extra_trust_penalty * extra_trusts
+            + self.trust_depth_penalty * extra_depth
+        )
+
+    def get_max_trust_depth(self) -> int:
+        max_depth = 0
+
+        for trust_id in self.state.trusts:
+            depth = 0
+            cur_id = trust_id
+            visited = set()
+
+            while cur_id in self.state.trusts:
+                trust = self.state.trusts[cur_id]
+                if trust.parent_trust_id is None:
+                    break
+
+                if cur_id in visited:
+                    break
+
+                visited.add(cur_id)
+                depth += 1
+                cur_id = trust.parent_trust_id
+
+            max_depth = max(max_depth, depth)
+
+        return max_depth
+
+    def compute_desired_loophole_savings(self) -> float:
+        total = 0.0
+
+        for asset in self.state.assets.values():
+            if asset.kind != AssetKind.PROPERTY:
+                continue
+
+            if not asset.is_sold:
+                continue
+
+            if asset.owner_type != OwnerType.TRUST:
+                continue
+
+            trust = self.state.trusts[asset.owner_id]
+
+            if trust.parent_trust_id != self.state.root_trust_id:
+                continue
+
+            if trust.section_678_power_holder_id != self.state.taxpayer_id:
+                continue
+
+            total += self._compute_catala_savings(asset, self.state.taxpayer_id)
+
+        return total
+
     def render(self):
         return self.render_world()
 
     def get_observation(self):
         return build_graph(state=self.state)
 
-    def render_world(self, filename="world"):
-        return {
-            "individuals": self.state.individuals,
-            "trusts": self.state.trusts,
-            "assets": self.state.assets,
-        }
+    def render_world(self, filename="distressed_world"):
+        dot = Digraph()
+
+        for trust_id, trust in self.state.trusts.items():
+            label = f"{trust_id}\\ntrust"
+            if trust.section_678_power_holder_id is not None:
+                label += f"\\n678 holder: {trust.section_678_power_holder_id}"
+
+            if trust_id == self.state.root_trust_id:
+                dot.node(trust_id, label, shape="box", style="filled", fillcolor="lightblue")
+            else:
+                dot.node(trust_id, label, shape="box")
+
+            if trust.parent_trust_id is not None:
+                dot.edge(trust.parent_trust_id, trust_id, label="subtrust")
+
+        for individual_id, individual in self.state.individuals.items():
+            label = f"{individual_id}\\n{individual.tax_residence.value}"
+            dot.node(individual_id, label, shape="ellipse")
+
+        for asset_id, asset in self.state.assets.items():
+            label = (
+                f"{asset_id}\\n"
+                f"{asset.kind.value}\\n"
+                f"basis: {asset.basis}\\n"
+                f"FMV: {asset.fair_market_value}"
+            )
+            if asset.sale_price is not None:
+                label += f"\\nsold: {asset.sale_price}"
+
+            fillcolor = "lightyellow" if asset.kind == AssetKind.PROPERTY else "white"
+            dot.node(
+                asset_id,
+                label,
+                shape="note",
+                style="filled",
+                fillcolor=fillcolor,
+            )
+
+            if asset.owner_type == OwnerType.TRUST:
+                dot.edge(asset.owner_id, asset_id, label="owns")
+            else:
+                dot.edge(asset.owner_id, asset_id, label="owns")
+
+        for trust_id, trust in self.state.trusts.items():
+            if trust.section_678_power_holder_id is not None:
+                dot.edge(
+                    trust.section_678_power_holder_id,
+                    trust_id,
+                    label="678 power",
+                    style="dashed",
+                )
+
+        with open(f"{filename}.png", "wb") as image_file:
+            image_file.write(dot.pipe(format="png"))
 
     def _make_subtrust(self, parent_trust_idx: int) -> None:
         if len(self.state.trusts) >= self.max_trusts:
             raise ValueError("Max number of trusts reached")
 
         parent_id = self._get_trust_id(parent_trust_idx)
+
         trust_id = f"sub_trust_{len(self.state.trusts)}"
 
         self.state.add_trust(
