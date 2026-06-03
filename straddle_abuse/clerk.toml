@@ -1,0 +1,9 @@
+[project]
+include_dirs = ["formalizations/"]
+build_dir = "formalizations/_build"
+target_dir = "formalizations/_target"
+
+[[target]]
+name = "straddle_abuse_tax_rules"
+modules = ["StraddleAbuseTaxModel"]
+backends = ["python"]

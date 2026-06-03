@@ -1,0 +1,121 @@
+> Module StraddleAbuseTaxModel
+
+```catala
+declaration structure RecognizedStraddleHistory:
+  data gain_leg_realized content boolean
+  data loss_leg_realized content boolean
+
+declaration structure TaxpayerCtfAllocation:
+  data allocated_gain content money
+  data allocated_loss content money
+  data tax_rate content decimal
+
+declaration structure CommonTrustFundTaxInput:
+  data straddle_history content RecognizedStraddleHistory
+  data taxpayer_allocation content TaxpayerCtfAllocation
+
+declaration scope TaxpayerStraddleTaxComputation:
+  input ctf_tax_input content CommonTrustFundTaxInput
+
+  internal realized_gain content money
+  internal realized_loss content money
+  internal taxable_income content money
+  internal tax_due content money
+
+  output after_tax_income content money
+```
+
+```catala
+scope TaxpayerStraddleTaxComputation:
+  definition realized_gain equals
+    if ctf_tax_input.straddle_history.gain_leg_realized then
+      ctf_tax_input.taxpayer_allocation.allocated_gain
+    else
+      $0
+
+  definition realized_loss equals
+    if ctf_tax_input.straddle_history.loss_leg_realized then
+      ctf_tax_input.taxpayer_allocation.allocated_loss
+    else
+      $0
+
+  definition taxable_income equals
+    realized_gain - realized_loss
+
+  definition tax_due equals
+    if taxable_income <= $0 then
+      $0
+    else
+      taxable_income * ctf_tax_input.taxpayer_allocation.tax_rate
+
+  definition after_tax_income equals
+    taxable_income - tax_due
+```
+
+```catala
+declaration scope TestNoRealizedGain:
+  output computation content TaxpayerStraddleTaxComputation
+
+scope TestNoRealizedGain:
+  definition computation equals
+    output of TaxpayerStraddleTaxComputation with {
+      -- ctf_tax_input:
+        CommonTrustFundTaxInput {
+          -- straddle_history:
+            RecognizedStraddleHistory {
+              -- gain_leg_realized: false
+              -- loss_leg_realized: false
+            }
+          -- taxpayer_allocation:
+            TaxpayerCtfAllocation {
+              -- allocated_gain: $100
+              -- allocated_loss: $0
+              -- tax_rate: 37%
+            }
+        }
+    }
+
+declaration scope TestGainOnly:
+  output computation content TaxpayerStraddleTaxComputation
+
+scope TestGainOnly:
+  definition computation equals
+    output of TaxpayerStraddleTaxComputation with {
+      -- ctf_tax_input:
+        CommonTrustFundTaxInput {
+          -- straddle_history:
+            RecognizedStraddleHistory {
+              -- gain_leg_realized: true
+              -- loss_leg_realized: false
+            }
+          -- taxpayer_allocation:
+            TaxpayerCtfAllocation {
+              -- allocated_gain: $100
+              -- allocated_loss: $0
+              -- tax_rate: 37%
+            }
+        }
+    }
+
+declaration scope TestGainAndLossOffset:
+  output computation content TaxpayerStraddleTaxComputation
+
+scope TestGainAndLossOffset:
+  definition computation equals
+    output of TaxpayerStraddleTaxComputation with {
+      -- ctf_tax_input:
+        CommonTrustFundTaxInput {
+          -- straddle_history:
+            RecognizedStraddleHistory {
+              -- gain_leg_realized: true
+              -- loss_leg_realized: true
+            }
+          -- taxpayer_allocation:
+            TaxpayerCtfAllocation {
+              -- allocated_gain: $100
+              -- allocated_loss: $60
+              -- tax_rate: 37%
+            }
+        }
+    }
+```
