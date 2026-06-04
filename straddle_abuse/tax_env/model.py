@@ -53,6 +53,14 @@ class GNN(torch.nn.Module):
         for node_type in ["individual", "ctf", "leg"]:
             x = x_dict[node_type]
 
+            if x.size(0) == 0:
+                pooled.append(torch.zeros(
+                    (1, x.size(1)),
+                    dtype=x.dtype,
+                    device=x.device,
+                ))
+                continue
+
             if hasattr(data[node_type], "batch"):
                 batch = data[node_type].batch
             else:

@@ -4,6 +4,14 @@ import torch
 from .state import StraddleLegKind, WorldState
 
 
+MONEY_SCALE = 1000.0
+COUNT_SCALE = 10.0
+
+
+def scaled_money(amount: float) -> float:
+    return amount / MONEY_SCALE
+
+
 def build_graph(state: WorldState) -> HeteroData:
     data = HeteroData()
 
@@ -18,8 +26,8 @@ def build_graph(state: WorldState) -> HeteroData:
     leg_index = {leg_id: i for i, leg_id in enumerate(leg_ids)}
 
     ctf_x = [[
-        float(state.ctf.participant_count),
-        state.ctf.total_contributions,
+        float(state.ctf.participant_count) / COUNT_SCALE,
+        scaled_money(state.ctf.total_contributions),
         1.0 if state.ctf.is_common_trust_fund else 0.0,
     ]]
 
@@ -42,11 +50,11 @@ def build_graph(state: WorldState) -> HeteroData:
         contribution = state.ctf.contribution_of(individual_id)
 
         individual_x.append([
-            individual.cash,
-            contribution,
+            scaled_money(individual.cash),
+            scaled_money(contribution),
             individual.tax_rate,
-            state.allocated_gain_for(individual_id),
-            state.allocated_loss_for(individual_id),
+            scaled_money(state.allocated_gain_for(individual_id)),
+            scaled_money(state.allocated_loss_for(individual_id)),
             1.0 if individual_id == state.taxpayer_id else 0.0,
         ])
 
@@ -64,10 +72,10 @@ def build_graph(state: WorldState) -> HeteroData:
         leg_x.append([
             1.0 if leg.kind == StraddleLegKind.GAIN else 0.0,
             1.0 if leg.kind == StraddleLegKind.LOSS else 0.0,
-            float(leg.straddle_id),
-            leg.built_in_amount,
-            leg.realized_amount,
-            leg.remaining_amount,
+            float(leg.straddle_id) / COUNT_SCALE,
+            scaled_money(leg.built_in_amount),
+            scaled_money(leg.realized_amount),
+            scaled_money(leg.remaining_amount),
             1.0 if leg.is_fully_realized else 0.0,
         ])
 

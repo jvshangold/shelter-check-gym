@@ -58,8 +58,11 @@ def test_classic_gain_then_taxpayer_entry_then_loss_path():
     assert state.taxpayer_catala_input() == {
         "gain_leg_realized": True,
         "loss_leg_realized": True,
+        "cash": 0.0,
+        "ctf_value": 100.0,
         "allocated_gain": 0.0,
         "allocated_loss": 100.0,
+        "unrecognized_gain": 0.0,
         "tax_rate": 0.37,
     }
 
@@ -73,6 +76,63 @@ def test_bad_but_legal_taxpayer_entry_before_gain():
     state.realize_gain(straddle_id, 1.0)
 
     assert state.allocated_gain_for("T") == 150.0
+
+
+def test_loss_first_is_legal_but_has_unrecognized_gain():
+    state = WorldState.initial_state()
+
+    state.invest("A", 100.0)
+    state.invest("T", 100.0)
+    straddle_id = state.enter_straddle(300.0)
+    state.realize_loss(straddle_id, 1.0)
+
+    assert state.allocated_loss_for("T") == 150.0
+    assert state.unrecognized_gain_for("T") == 150.0
+    assert state.taxpayer_catala_input() == {
+        "gain_leg_realized": False,
+        "loss_leg_realized": True,
+        "cash": 0.0,
+        "ctf_value": 100.0,
+        "allocated_gain": 0.0,
+        "allocated_loss": 150.0,
+        "unrecognized_gain": 150.0,
+        "tax_rate": 0.37,
+    }
+
+
+def test_repeated_loss_first_keeps_unrecognized_gain_blocker():
+    state = WorldState.initial_state()
+
+    state.invest("B", 100.0)
+    state.invest("T", 100.0)
+    straddle_id = state.enter_straddle(300.0)
+
+    state.realize_loss(straddle_id, 0.5)
+    assert state.allocated_loss_for("T") == 75.0
+    assert state.unrecognized_gain_for("T") == 75.0
+
+    state.realize_loss(straddle_id, 1.0)
+    assert state.allocated_loss_for("T") == 150.0
+    assert state.unrecognized_gain_for("T") == 150.0
+
+
+def test_later_gain_realization_reduces_loss_blocker():
+    state = WorldState.initial_state()
+
+    state.invest("B", 100.0)
+    state.invest("T", 100.0)
+    straddle_id = state.enter_straddle(300.0)
+
+    state.realize_loss(straddle_id, 1.0)
+    assert state.unrecognized_gain_for("T") == 150.0
+
+    state.realize_gain(straddle_id, 0.5)
+    assert state.allocated_gain_for("T") == 75.0
+    assert state.unrecognized_gain_for("T") == 75.0
+
+    state.realize_gain(straddle_id, 1.0)
+    assert state.allocated_gain_for("T") == 150.0
+    assert state.unrecognized_gain_for("T") == 0.0
 
 
 def test_partial_realization_leaves_remaining_amount():
@@ -178,7 +238,12 @@ def test_env_classic_path_reward_and_masks():
         TaxEnv,
     )
 
-    env = TaxEnv(MAX_STRADDLES=3)
+    env = TaxEnv(
+        MAX_STRADDLES=3,
+        STRADDLE_AMOUNTS=[1100.0],
+        FRACTIONS=[1.0],
+        INITIAL_FACILITATOR_INVESTMENT=0.0,
+    )
     obs, info = env.reset()
 
     assert info == {}
@@ -190,13 +255,13 @@ def test_env_classic_path_reward_and_masks():
 
     assert env.get_action_mask()[ENTER_STRADDLE] == 1
 
-    env.step([ENTER_STRADDLE, 0, 2, 0])
+    env.step([ENTER_STRADDLE, 0, 0, 0])
 
     assert env.get_straddle_mask(StraddleLegKind.GAIN) == [1, 0, 0]
 
-    env.step([REALIZE_GAIN, 0, 3, 0])
-    env.step([INVEST, 0, 3, 0])
-    obs, reward, terminated, truncated, info = env.step([REALIZE_LOSS, 0, 3, 0])
+    env.step([REALIZE_GAIN, 0, 0, 0])
+    env.step([INVEST, 0, 0, 0])
+    obs, reward, terminated, truncated, info = env.step([REALIZE_LOSS, 0, 0, 0])
 
     assert obs is not None
     assert reward > 0.0
@@ -204,3 +269,140 @@ def test_env_classic_path_reward_and_masks():
     assert not truncated
     assert not info["invalid_action"]
     assert info["tax_advantage"] > 0.0
+    assert info["tax_reduction"] > 0.0
+
+
+def test_env_loss_first_does_not_create_tax_advantage():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import (
+        ENTER_STRADDLE,
+        INVEST,
+        REALIZE_LOSS,
+        TaxEnv,
+    )
+
+    env = TaxEnv(
+        MAX_STRADDLES=3,
+        FRACTIONS=[1.0],
+        INITIAL_FACILITATOR_INVESTMENT=0.0,
+    )
+
+    env.reset()
+    env.step([INVEST, 0, 0, 0])
+    env.step([INVEST, 0, 0, 1])
+    env.step([ENTER_STRADDLE, 0, 0, 0])
+    _, reward, terminated, _, info = env.step([REALIZE_LOSS, 0, 0, 0])
+
+    assert not info["invalid_action"]
+    assert not terminated
+    assert info["tax_advantage"] == 0.0
+    assert info["tax_reduction"] == 0.0
+    assert reward == 0.0
+
+
+def test_env_repeated_loss_first_does_not_create_tax_advantage():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import (
+        ENTER_STRADDLE,
+        INVEST,
+        REALIZE_LOSS,
+        TaxEnv,
+    )
+
+    env = TaxEnv(
+        MAX_STRADDLES=3,
+        FRACTIONS=[0.25, 0.5, 0.75, 1.0],
+        INITIAL_FACILITATOR_INVESTMENT=0.0,
+    )
+
+    env.reset()
+    env.step([INVEST, 0, 3, 0])
+    env.step([INVEST, 0, 3, 2])
+    env.step([ENTER_STRADDLE, 0, 0, 0])
+    env.step([REALIZE_LOSS, 0, 1, 0])
+    _, reward, terminated, _, info = env.step([REALIZE_LOSS, 0, 3, 0])
+
+    assert not info["invalid_action"]
+    assert not terminated
+    assert info["tax_advantage"] == 0.0
+    assert info["tax_reduction"] == 0.0
+    assert reward == 0.0
+
+
+def test_env_default_starts_with_facilitators_in_ctf():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import ENTER_STRADDLE, TaxEnv
+
+    env = TaxEnv(MAX_STRADDLES=3)
+
+    env.reset()
+
+    assert env.state.ctf.contribution_of("A") == 300.0
+    assert env.state.ctf.contribution_of("B") == 300.0
+    assert env.state.ctf.contribution_of("T") == 0.0
+    assert env.state.individuals["A"].cash == 0.0
+    assert env.state.individuals["B"].cash == 0.0
+    assert env.get_individual_mask() == [1, 0, 0]
+    assert env.state.ctf.is_common_trust_fund
+    assert env.get_action_mask()[ENTER_STRADDLE] == 1
+
+
+def test_env_facilitator_gain_realization_is_neutral_before_taxpayer_enters():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import ENTER_STRADDLE, REALIZE_GAIN, TaxEnv
+
+    env = TaxEnv(MAX_STRADDLES=3)
+
+    env.reset()
+    env.step([ENTER_STRADDLE, 0, 2, 0])
+    _, reward, terminated, _, info = env.step([REALIZE_GAIN, 0, 3, 0])
+
+    assert not info["invalid_action"]
+    assert not terminated
+    assert reward == 0.0
+    assert info["tax_advantage"] == 0.0
+    assert env.state.allocated_gain_for("T") == 0.0
+
+
+def test_env_default_shortened_classic_path_succeeds():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import (
+        ENTER_STRADDLE,
+        INVEST,
+        REALIZE_GAIN,
+        REALIZE_LOSS,
+        TaxEnv,
+    )
+
+    env = TaxEnv(MAX_STRADDLES=3)
+
+    env.reset()
+    env.step([ENTER_STRADDLE, 0, 2, 0])
+    env.step([REALIZE_GAIN, 0, 3, 0])
+    env.step([INVEST, 0, 3, 0])
+    _, reward, terminated, _, info = env.step([REALIZE_LOSS, 0, 3, 0])
+
+    assert not info["invalid_action"]
+    assert reward > 0.0
+    assert terminated
+    assert info["tax_advantage"] > 30.0

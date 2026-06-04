@@ -1,0 +1,13 @@
+update: 125
+snapshot_index: 5
+tax_advantage: 37.0
+tax_reduction: 37.0
+terminated: True
+truncated: False
+invalid_action: False
+
+actions:
+1. enter_straddle(amount=900.0)
+2. realize_gain(straddle_id=1, fraction=1.0)
+3. invest(individual=T, fraction=1.0)
+4. realize_loss(straddle_id=1, fraction=1.0)

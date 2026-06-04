@@ -29,12 +29,15 @@ class TaxEnv(gym.Env):
         STRADDLE_AMOUNTS=None,
         FRACTIONS=None,
         EXTRA_STRADDLE_PENALTY=0.01,
+        SUCCESS_TAX_ADVANTAGE=30.0,
+        INITIAL_FACILITATOR_INVESTMENT=300.0,
+        TAXPAYER_ORDINARY_INCOME=100.0,
     ):
         super().__init__()
 
         self.observation_space: Space = spaces.Dict({})
 
-        self.straddle_amounts = STRADDLE_AMOUNTS or [100.0, 200.0, 300.0, 400.0]
+        self.straddle_amounts = STRADDLE_AMOUNTS or [300.0, 500.0, 700.0, 900.0]
         self.fractions = FRACTIONS or [0.25, 0.5, 0.75, 1.0]
         self.individual_ids = ["T", "A", "B"]
 
@@ -48,8 +51,13 @@ class TaxEnv(gym.Env):
         self.max_straddles = MAX_STRADDLES
         self.max_steps = MAX_STEPS
         self.extra_straddle_penalty = EXTRA_STRADDLE_PENALTY
+        self.success_tax_advantage = SUCCESS_TAX_ADVANTAGE
+        self.initial_facilitator_investment = INITIAL_FACILITATOR_INVESTMENT
+        self.taxpayer_ordinary_income = TAXPAYER_ORDINARY_INCOME
 
-        self.state = WorldState.initial_state()
+        self.state = WorldState.initial_state(
+            facilitator_investment=self.initial_facilitator_investment,
+        )
         self.idx_to_straddle: Dict[int, int] = {}
         self.idx_to_individual: Dict[int, str] = {
             i: individual_id for i, individual_id in enumerate(self.individual_ids)
@@ -88,8 +96,8 @@ class TaxEnv(gym.Env):
             print("Exception:", e)
             invalid_action = True
 
-        current_after_tax_income = self.compute_after_tax_income()
-        current_tax_advantage = self.compute_tax_advantage(current_after_tax_income)
+        current_tax_reduction = self.compute_tax_reduction()
+        current_tax_advantage = max(0.0, current_tax_reduction)
 
         reward = (
             current_tax_advantage
@@ -102,7 +110,7 @@ class TaxEnv(gym.Env):
         if invalid_action:
             reward -= 1.0
 
-        if current_tax_advantage > 0.0 and not invalid_action:
+        if current_tax_advantage >= self.success_tax_advantage and not invalid_action:
             terminated = True
 
         self.steps += 1
@@ -114,7 +122,7 @@ class TaxEnv(gym.Env):
         obs = self.get_observation()
         info = {
             "invalid_action": invalid_action,
-            "after_tax_income": current_after_tax_income,
+            "tax_reduction": current_tax_reduction,
             "tax_advantage": current_tax_advantage,
         }
 
@@ -123,7 +131,9 @@ class TaxEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        self.state = WorldState.initial_state()
+        self.state = WorldState.initial_state(
+            facilitator_investment=self.initial_facilitator_investment,
+        )
         self.steps = 0
         self.prev_tax_advantage = 0.0
         self._refresh_indices()
@@ -136,7 +146,7 @@ class TaxEnv(gym.Env):
     def render(self):
         return self.render_world()
 
-    def compute_after_tax_income(self) -> float:
+    def compute_tax_reduction(self) -> float:
         catala_input = self.state.taxpayer_catala_input()
 
         ctf_tax_input = TaxModel.CommonTrustFundTaxInput(
@@ -145,8 +155,10 @@ class TaxEnv(gym.Env):
                 loss_leg_realized=catala_input["loss_leg_realized"],
             ),
             taxpayer_allocation=TaxModel.TaxpayerCtfAllocation(
+                ordinary_income=self._money(self.taxpayer_ordinary_income),
                 allocated_gain=self._money(catala_input["allocated_gain"]),
                 allocated_loss=self._money(catala_input["allocated_loss"]),
+                unrecognized_gain=self._money(catala_input["unrecognized_gain"]),
                 tax_rate=self._decimal_rate(catala_input["tax_rate"]),
             ),
         )
@@ -157,12 +169,7 @@ class TaxEnv(gym.Env):
             )
         )
 
-        return self._money_to_float(result.after_tax_income)
-
-    def compute_tax_advantage(self, after_tax_income: float | None = None) -> float:
-        if after_tax_income is None:
-            after_tax_income = self.compute_after_tax_income()
-        return max(0.0, -after_tax_income)
+        return self._money_to_float(result.tax_reduction)
 
     def compute_complexity_penalty(self) -> float:
         extra_straddles = max(0, self._straddle_count() - 1)

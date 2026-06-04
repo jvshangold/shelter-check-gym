@@ -61,6 +61,7 @@ class RealizedItem:
     kind: StraddleLegKind
     amount: float
     allocations: dict[str, float]
+    unrecognized_gain_allocations: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -201,6 +202,14 @@ class WorldState:
         leg = self.straddle_legs[leg_id]
         realized_amount = leg.remaining_amount * fraction
         allocations = self._allocate_to_current_participants(realized_amount)
+        unrecognized_gain_allocations = (
+            self._unrecognized_gain_allocations_at_loss(
+                straddle_id=leg.straddle_id,
+                loss_allocations=allocations,
+            )
+            if kind == StraddleLegKind.LOSS
+            else {}
+        )
         leg.realized_amount += realized_amount
 
         realized_item = RealizedItem(
@@ -209,6 +218,7 @@ class WorldState:
             kind=leg.kind,
             amount=realized_amount,
             allocations=allocations,
+            unrecognized_gain_allocations=unrecognized_gain_allocations,
         )
         self.realized_items.append(realized_item)
         return realized_item
@@ -255,11 +265,51 @@ class WorldState:
             if contribution > 0.0
         }
 
+    def _unrecognized_gain_allocations_at_loss(
+        self,
+        straddle_id: int,
+        loss_allocations: dict[str, float],
+    ) -> dict[str, float]:
+        gain_leg = self.straddle_legs.get(f"straddle_{straddle_id}_gain")
+
+        if gain_leg is None:
+            return {}
+
+        gain_allocations = self._allocate_to_current_participants(
+            gain_leg.remaining_amount
+        )
+
+        return {
+            individual_id: min(loss_amount, gain_allocations.get(individual_id, 0.0))
+            for individual_id, loss_amount in loss_allocations.items()
+        }
+
     def allocated_gain_for(self, individual_id: str) -> float:
         return self._allocated_amount_for(individual_id, StraddleLegKind.GAIN)
 
     def allocated_loss_for(self, individual_id: str) -> float:
         return self._allocated_amount_for(individual_id, StraddleLegKind.LOSS)
+
+    def unrecognized_gain_for(self, individual_id: str) -> float:
+        if individual_id not in self.individuals:
+            raise ValueError(f"Unknown individual: {individual_id}")
+
+        blockers_by_straddle: dict[int, float] = {}
+
+        for item in self.realized_items:
+            if item.kind == StraddleLegKind.LOSS:
+                blockers_by_straddle[item.straddle_id] = (
+                    blockers_by_straddle.get(item.straddle_id, 0.0)
+                    + item.unrecognized_gain_allocations.get(individual_id, 0.0)
+                )
+            elif item.kind == StraddleLegKind.GAIN:
+                blockers_by_straddle[item.straddle_id] = max(
+                    0.0,
+                    blockers_by_straddle.get(item.straddle_id, 0.0)
+                    - item.allocations.get(individual_id, 0.0),
+                )
+
+        return sum(blockers_by_straddle.values())
 
     def _allocated_amount_for(
         self,
@@ -281,8 +331,11 @@ class WorldState:
         return {
             "gain_leg_realized": self._has_realized(StraddleLegKind.GAIN),
             "loss_leg_realized": self._has_realized(StraddleLegKind.LOSS),
+            "cash": taxpayer.cash,
+            "ctf_value": self.ctf.contribution_of(self.taxpayer_id),
             "allocated_gain": self.allocated_gain_for(self.taxpayer_id),
             "allocated_loss": self.allocated_loss_for(self.taxpayer_id),
+            "unrecognized_gain": self.unrecognized_gain_for(self.taxpayer_id),
             "tax_rate": taxpayer.tax_rate,
         }
 
@@ -290,7 +343,10 @@ class WorldState:
         return any(item.kind == kind for item in self.realized_items)
 
     @classmethod
-    def initial_state(cls) -> WorldState:
+    def initial_state(
+        cls,
+        facilitator_investment: float = 0.0,
+    ) -> WorldState:
         state = cls()
 
         state.add_individual(
@@ -308,5 +364,11 @@ class WorldState:
             cash=500.0,
             tax_rate=0.0,
         )
+
+        if facilitator_investment > 0.0:
+            state.invest("A", facilitator_investment)
+            state.invest("B", facilitator_investment)
+            state.individuals["A"].cash = 0.0
+            state.individuals["B"].cash = 0.0
 
         return state

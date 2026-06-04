@@ -31,14 +31,16 @@ class RecognizedStraddleHistory:
         return "RecognizedStraddleHistory(gain_leg_realized={},loss_leg_realized={})".format(self.gain_leg_realized, self.loss_leg_realized)
 
 class TaxpayerCtfAllocation:
-    def __init__(self, allocated_gain: Money, allocated_loss: Money, tax_rate: Decimal) -> None:
+    def __init__(self, ordinary_income: Money, allocated_gain: Money, allocated_loss: Money, unrecognized_gain: Money, tax_rate: Decimal) -> None:
+        self.ordinary_income = ordinary_income
         self.allocated_gain = allocated_gain
         self.allocated_loss = allocated_loss
+        self.unrecognized_gain = unrecognized_gain
         self.tax_rate = tax_rate
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, TaxpayerCtfAllocation):
-            return (self.allocated_gain == other.allocated_gain and self.allocated_loss == other.allocated_loss and self.tax_rate == other.tax_rate)
+            return (self.ordinary_income == other.ordinary_income and self.allocated_gain == other.allocated_gain and self.allocated_loss == other.allocated_loss and self.unrecognized_gain == other.unrecognized_gain and self.tax_rate == other.tax_rate)
         else:
             return False
 
@@ -46,15 +48,15 @@ class TaxpayerCtfAllocation:
         return not (self == other)
 
     def __str__(self) -> str:
-        return "TaxpayerCtfAllocation(allocated_gain={},allocated_loss={},tax_rate={})".format(self.allocated_gain, self.allocated_loss, self.tax_rate)
+        return "TaxpayerCtfAllocation(ordinary_income={},allocated_gain={},allocated_loss={},unrecognized_gain={},tax_rate={})".format(self.ordinary_income, self.allocated_gain, self.allocated_loss, self.unrecognized_gain, self.tax_rate)
 
 class TaxpayerStraddleTaxComputation:
-    def __init__(self, after_tax_income: Money) -> None:
-        self.after_tax_income = after_tax_income
+    def __init__(self, tax_reduction: Money) -> None:
+        self.tax_reduction = tax_reduction
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, TaxpayerStraddleTaxComputation):
-            return (self.after_tax_income == other.after_tax_income)
+            return (self.tax_reduction == other.tax_reduction)
         else:
             return False
 
@@ -62,7 +64,7 @@ class TaxpayerStraddleTaxComputation:
         return not (self == other)
 
     def __str__(self) -> str:
-        return "TaxpayerStraddleTaxComputation(after_tax_income={})".format(self.after_tax_income)
+        return "TaxpayerStraddleTaxComputation(tax_reduction={})".format(self.tax_reduction)
 
 class CommonTrustFundTaxInput:
     def __init__(self, straddle_history: RecognizedStraddleHistory, taxpayer_allocation: TaxpayerCtfAllocation) -> None:
@@ -196,6 +198,7 @@ class TestGainAndLossOffsetIn:
 
 def taxpayer_straddle_tax_computation(taxpayer_straddle_tax_computation_in:TaxpayerStraddleTaxComputationIn):
     ctf_tax_input = (taxpayer_straddle_tax_computation_in.ctf_tax_input_in)
+    baseline_taxable_income = (ctf_tax_input.taxpayer_allocation.ordinary_income)
     if ctf_tax_input.straddle_history.loss_leg_realized:
         realized_loss = (ctf_tax_input.taxpayer_allocation.allocated_loss)
     else:
@@ -204,25 +207,33 @@ def taxpayer_straddle_tax_computation(taxpayer_straddle_tax_computation_in:Taxpa
         realized_gain = (ctf_tax_input.taxpayer_allocation.allocated_gain)
     else:
         realized_gain = (Money(Integer(0)))
-    taxable_income = ((realized_gain - realized_loss))
-    if (taxable_income <= Money(Integer(0))):
-        tax_due = (Money(Integer(0)))
+    if (baseline_taxable_income <= Money(Integer(0))):
+        baseline_tax_due = (Money(Integer(0)))
     else:
-        tax_due = ((taxable_income * ctf_tax_input.taxpayer_allocation.tax_rate))
-    after_tax_income = ((taxable_income - tax_due))
-    return TaxpayerStraddleTaxComputation(after_tax_income = after_tax_income)
+        baseline_tax_due = ((baseline_taxable_income * ctf_tax_input.taxpayer_allocation.tax_rate))
+    if (realized_loss <= ctf_tax_input.taxpayer_allocation.unrecognized_gain):
+        deductible_loss = (Money(Integer(0)))
+    else:
+        deductible_loss = ((realized_loss - ctf_tax_input.taxpayer_allocation.unrecognized_gain))
+    current_taxable_income = (((ctf_tax_input.taxpayer_allocation.ordinary_income + realized_gain) - deductible_loss))
+    if (current_taxable_income <= Money(Integer(0))):
+        current_tax_due = (Money(Integer(0)))
+    else:
+        current_tax_due = ((current_taxable_income * ctf_tax_input.taxpayer_allocation.tax_rate))
+    tax_reduction = ((baseline_tax_due - current_tax_due))
+    return TaxpayerStraddleTaxComputation(tax_reduction = tax_reduction)
 
 def test_gain_and_loss_offset(test_gain_and_loss_offset_in:TestGainAndLossOffsetIn):
-    result = (taxpayer_straddle_tax_computation(TaxpayerStraddleTaxComputationIn(ctf_tax_input_in = CommonTrustFundTaxInput(straddle_history = RecognizedStraddleHistory(gain_leg_realized = True, loss_leg_realized = True), taxpayer_allocation = TaxpayerCtfAllocation(allocated_gain = Money(Integer(10000)), allocated_loss = Money(Integer(6000)), tax_rate = decimal_of_string("37/100"))))))
-    computation = (TaxpayerStraddleTaxComputation(after_tax_income = result.after_tax_income))
+    result = (taxpayer_straddle_tax_computation(TaxpayerStraddleTaxComputationIn(ctf_tax_input_in = CommonTrustFundTaxInput(straddle_history = RecognizedStraddleHistory(gain_leg_realized = True, loss_leg_realized = True), taxpayer_allocation = TaxpayerCtfAllocation(ordinary_income = Money(Integer(10000)), allocated_gain = Money(Integer(10000)), allocated_loss = Money(Integer(6000)), unrecognized_gain = Money(Integer(0)), tax_rate = decimal_of_string("37/100"))))))
+    computation = (TaxpayerStraddleTaxComputation(tax_reduction = result.tax_reduction))
     return TestGainAndLossOffset(computation = computation)
 
 def test_gain_only(test_gain_only_in:TestGainOnlyIn):
-    result = (taxpayer_straddle_tax_computation(TaxpayerStraddleTaxComputationIn(ctf_tax_input_in = CommonTrustFundTaxInput(straddle_history = RecognizedStraddleHistory(gain_leg_realized = True, loss_leg_realized = False), taxpayer_allocation = TaxpayerCtfAllocation(allocated_gain = Money(Integer(10000)), allocated_loss = Money(Integer(0)), tax_rate = decimal_of_string("37/100"))))))
-    computation = (TaxpayerStraddleTaxComputation(after_tax_income = result.after_tax_income))
+    result = (taxpayer_straddle_tax_computation(TaxpayerStraddleTaxComputationIn(ctf_tax_input_in = CommonTrustFundTaxInput(straddle_history = RecognizedStraddleHistory(gain_leg_realized = True, loss_leg_realized = False), taxpayer_allocation = TaxpayerCtfAllocation(ordinary_income = Money(Integer(10000)), allocated_gain = Money(Integer(10000)), allocated_loss = Money(Integer(0)), unrecognized_gain = Money(Integer(0)), tax_rate = decimal_of_string("37/100"))))))
+    computation = (TaxpayerStraddleTaxComputation(tax_reduction = result.tax_reduction))
     return TestGainOnly(computation = computation)
 
 def test_no_realized_gain(test_no_realized_gain_in:TestNoRealizedGainIn):
-    result = (taxpayer_straddle_tax_computation(TaxpayerStraddleTaxComputationIn(ctf_tax_input_in = CommonTrustFundTaxInput(straddle_history = RecognizedStraddleHistory(gain_leg_realized = False, loss_leg_realized = False), taxpayer_allocation = TaxpayerCtfAllocation(allocated_gain = Money(Integer(10000)), allocated_loss = Money(Integer(0)), tax_rate = decimal_of_string("37/100"))))))
-    computation = (TaxpayerStraddleTaxComputation(after_tax_income = result.after_tax_income))
+    result = (taxpayer_straddle_tax_computation(TaxpayerStraddleTaxComputationIn(ctf_tax_input_in = CommonTrustFundTaxInput(straddle_history = RecognizedStraddleHistory(gain_leg_realized = False, loss_leg_realized = False), taxpayer_allocation = TaxpayerCtfAllocation(ordinary_income = Money(Integer(10000)), allocated_gain = Money(Integer(10000)), allocated_loss = Money(Integer(0)), unrecognized_gain = Money(Integer(0)), tax_rate = decimal_of_string("37/100"))))))
+    computation = (TaxpayerStraddleTaxComputation(tax_reduction = result.tax_reduction))
     return TestNoRealizedGain(computation = computation)
