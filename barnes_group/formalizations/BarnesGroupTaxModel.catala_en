@@ -1,0 +1,35 @@
+> Module BarnesGroupTaxModel
+
+```catala
+declaration scope BarnesGroupTaxComputation:
+  input direct_repatriated_cash content money
+  input domestic_stock_basis content money
+  input applicable_earnings content money
+  input tax_rate content decimal
+
+  internal direct_cash_inclusion content money
+  internal remaining_applicable_earnings content money
+
+  output total_inclusion content money
+  output section_956_inclusion content money
+  output tax_due content money
+
+scope BarnesGroupTaxComputation:
+  definition direct_cash_inclusion equals
+    if direct_repatriated_cash < applicable_earnings
+    then direct_repatriated_cash
+    else applicable_earnings
+
+  definition remaining_applicable_earnings equals
+    applicable_earnings - direct_cash_inclusion
+
+  definition section_956_inclusion equals
+    if domestic_stock_basis < remaining_applicable_earnings
+    then domestic_stock_basis
+    else remaining_applicable_earnings
+
+  definition total_inclusion equals
+    direct_cash_inclusion + section_956_inclusion
+
+  definition tax_due equals total_inclusion * tax_rate
+```
