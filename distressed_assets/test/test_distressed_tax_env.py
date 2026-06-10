@@ -9,7 +9,8 @@ from distressed_assets.tax_env.state import (
     AssetKind,
 )
 from distressed_assets.tax_env.model import GNN
-from distressed_assets.tax_env.env import TaxEnv
+from distressed_assets.tax_env.env import MOVE_ASSET, TaxEnv
+from distressed_assets.rl.train_agent import make_asset_mask, make_trust_mask
 
 
 def initialize():
@@ -208,3 +209,50 @@ def test_env_move_asset_sell_and_vesting_power():
     assert asset.is_sold
     assert trust.section_678_power_holder_id == "T"
     assert env.compute_savings() > 0.0
+
+
+def test_env_rejects_moving_cash_asset():
+    env = TaxEnv()
+    env.reset()
+
+    obs, reward, terminated, truncated, info = env.step([0, 0, 0, 0])
+    assert not info["invalid_action"]
+
+    obs, reward, terminated, truncated, info = env.step([MOVE_ASSET, 1, 0, 0])
+
+    assert info["invalid_action"]
+    assert env.state.assets["t_cash"].owner_type == OwnerType.INDIVIDUAL
+    assert env.state.assets["t_cash"].owner_id == "T"
+
+
+def test_move_asset_masks_exclude_cash_and_same_destination():
+    env = TaxEnv()
+    env.reset()
+
+    env.state.add_individual("FP_0", TaxResidence.FOREIGN)
+    env.state.add_asset(
+        asset_id="distressed_asset_0",
+        kind=AssetKind.PROPERTY,
+        basis=100.0,
+        fair_market_value=20.0,
+        owner_type=OwnerType.INDIVIDUAL,
+        owner_id="FP_0",
+    )
+    env._refresh_indices()
+
+    env.step([0, 0, 0, 0])  # make subtrust
+
+    asset_mask = make_asset_mask(env, MOVE_ASSET, torch.device("cpu"))
+    assert not asset_mask[0].item()  # t_cash
+    assert asset_mask[1].item()  # distressed property
+
+    env.step([MOVE_ASSET, 1, 1, 0])
+
+    same_destination_mask = make_trust_mask(
+        env,
+        MOVE_ASSET,
+        torch.device("cpu"),
+        asset_idx=1,
+    )
+    assert same_destination_mask[0].item()  # root_trust remains a different destination
+    assert not same_destination_mask[1].item()  # current trust is masked out

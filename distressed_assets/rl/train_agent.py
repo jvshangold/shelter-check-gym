@@ -18,8 +18,9 @@ def make_action_mask(env, device):
 
     mask[MAKE_SUBTRUST] = len(env.state.trusts) < env.max_trusts
     mask[MOVE_ASSET] = any(
-        _can_move_asset(env, asset_id)
+        _can_move_asset(env, asset_id, trust_id)
         for asset_id in _indexed_values(env.idx_to_asset, env.max_assets)
+        for trust_id in _indexed_values(env.idx_to_trust, env.max_trusts)
     )
     mask[SELL_ASSET] = any(
         _can_sell_asset(env, asset_id)
@@ -41,8 +42,11 @@ def _indexed_values(index, max_count):
     return [index[i] for i in range(max_count) if i in index]
 
 
-def make_trust_mask(env, action_type, device):
+def make_trust_mask(env, action_type, device, asset_idx=None):
     mask = []
+    asset_id = None
+    if asset_idx is not None:
+        asset_id = env.idx_to_asset.get(asset_idx)
 
     for i in range(env.max_trusts):
         trust_id = env.idx_to_trust.get(i)
@@ -52,7 +56,18 @@ def make_trust_mask(env, action_type, device):
         elif action_type == MAKE_SUBTRUST:
             mask.append(len(env.state.trusts) < env.max_trusts)
         elif action_type == MOVE_ASSET:
-            mask.append(True)
+            if asset_id is None:
+                mask.append(
+                    any(
+                        _can_move_asset(env, candidate_asset_id, trust_id)
+                        for candidate_asset_id in _indexed_values(
+                            env.idx_to_asset,
+                            env.max_assets,
+                        )
+                    )
+                )
+            else:
+                mask.append(_can_move_asset(env, asset_id, trust_id))
         elif action_type == GIVE_VESTING_POWER:
             mask.append(
                 any(
@@ -75,7 +90,12 @@ def make_asset_mask(env, action_type, device):
         if asset_id is None:
             mask.append(False)
         elif action_type == MOVE_ASSET:
-            mask.append(_can_move_asset(env, asset_id))
+            mask.append(
+                any(
+                    _can_move_asset(env, asset_id, trust_id)
+                    for trust_id in _indexed_values(env.idx_to_trust, env.max_trusts)
+                )
+            )
         elif action_type == SELL_ASSET:
             mask.append(_can_sell_asset(env, asset_id))
         else:
@@ -99,8 +119,28 @@ def make_individual_mask(env, trust_idx, device):
     return torch.tensor(mask, dtype=torch.bool, device=device)
 
 
-def _can_move_asset(env, asset_id):
-    return not env.state.assets[asset_id].is_sold and bool(env.state.trusts)
+def _can_move_asset(env, asset_id, dst_trust_id=None):
+    asset = env.state.assets[asset_id]
+
+    if asset.kind != AssetKind.PROPERTY:
+        return False
+
+    if asset.is_sold:
+        return False
+
+    if not env.state.trusts:
+        return False
+
+    if dst_trust_id is None:
+        return True
+
+    if dst_trust_id not in env.state.trusts:
+        return False
+
+    return not (
+        asset.owner_type == OwnerType.TRUST
+        and asset.owner_id == dst_trust_id
+    )
 
 
 def _can_sell_asset(env, asset_id):
@@ -165,19 +205,23 @@ def sample_action(model, env, obs, device):
         used_masks["trust"] = trust_mask
 
     elif action_type_int == MOVE_ASSET:
-        trust_mask = make_trust_mask(env, action_type_int, device)
         asset_mask = make_asset_mask(env, action_type_int, device)
-
-        dist_trust = masked_categorical(out["trust_logits"], trust_mask)
         dist_asset = masked_categorical(out["asset_logits"], asset_mask)
-
-        trust = dist_trust.sample()
         asset = dist_asset.sample()
 
-        log_prob = log_prob + dist_trust.log_prob(trust)
+        trust_mask = make_trust_mask(
+            env,
+            action_type_int,
+            device,
+            asset_idx=asset.item(),
+        )
+        dist_trust = masked_categorical(out["trust_logits"], trust_mask)
+        trust = dist_trust.sample()
+
         log_prob = log_prob + dist_asset.log_prob(asset)
-        entropy = entropy + dist_trust.entropy()
         entropy = entropy + dist_asset.entropy()
+        log_prob = log_prob + dist_trust.log_prob(trust)
+        entropy = entropy + dist_trust.entropy()
 
         action["trust"] = trust
         action["asset"] = asset
@@ -237,6 +281,10 @@ def reset_training_env(env, device):
     return obs.to(device)
 
 
+def has_valid_action(env, device) -> bool:
+    return bool(make_action_mask(env, device).any().item())
+
+
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -275,6 +323,9 @@ def train():
         saved_success_image = False
 
         for _ in range(rollout_steps):
+            if not has_valid_action(env, device):
+                obs = reset_training_env(env, device)
+
             with torch.no_grad():
                 action, log_prob, entropy, value, masks = sample_action(
                     model=model,

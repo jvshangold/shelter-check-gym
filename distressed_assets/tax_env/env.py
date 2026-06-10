@@ -369,6 +369,12 @@ class TaxEnv(gym.Env):
         if asset.is_sold:
             raise ValueError("Cannot move an asset after sale")
 
+        if asset.kind != AssetKind.PROPERTY:
+            raise ValueError("Can only move property assets")
+
+        if asset.owner_type == OwnerType.TRUST and asset.owner_id == dst_trust_id:
+            raise ValueError("Asset is already owned by destination trust")
+
         self.state.transfer_asset(
             asset_id=asset_id,
             new_owner_type=OwnerType.TRUST,

@@ -80,17 +80,13 @@ class WorldState:
         self,
         corporation_id: str,
         tax_residence: TaxResidence,
-        parent_id: str | None = None,
     ) -> None:
         if corporation_id in self.corporations:
             raise ValueError(f"Corporation already exists: {corporation_id}")
-        if parent_id is not None:
-            self._require_corporation(parent_id)
 
         self.corporations[corporation_id] = Corporation(
             id=corporation_id,
             tax_residence=tax_residence,
-            parent_id=parent_id,
         )
 
     def add_cash(
@@ -155,14 +151,21 @@ class WorldState:
         )
         return stock_id
 
-    def create_subcorporation(
+    def add_subcorporation(
         self,
         parent_id: str,
         sub_id: str,
         tax_residence: TaxResidence = TaxResidence.US,
     ) -> None:
         self._require_corporation(parent_id)
-        self.add_corporation(sub_id, tax_residence, parent_id=parent_id)
+        if sub_id in self.corporations:
+            raise ValueError(f"Corporation already exists: {sub_id}")
+
+        self.corporations[sub_id] = Corporation(
+            id=sub_id,
+            tax_residence=tax_residence,
+            parent_id=parent_id,
+        )
         self.add_stock(
             issuer_id=sub_id,
             holder_id=parent_id,
@@ -190,18 +193,6 @@ class WorldState:
 
         if source.amount == 0:
             del self.cash[source.id]
-
-    def distribute_cash(self, from_id: str, to_id: str, amount: float) -> None:
-        self._require_corporation(from_id)
-        self._require_corporation(to_id)
-        if not self.corporations[from_id].is_domestic:
-            raise ValueError("Only domestic corporations can use this distribution action")
-        if not self.corporations[to_id].is_domestic:
-            raise ValueError("Distribution recipient must be domestic")
-        if not self.is_subcorporation_of(from_id, to_id):
-            raise ValueError("Distribution source must be a direct subcorporation of recipient")
-
-        self.transfer_cash(from_id, to_id, amount)
 
     def transfer_stock(self, stock_id: str, to_id: str, percent: float) -> str:
         if stock_id not in self.stock:
@@ -237,6 +228,8 @@ class WorldState:
         self._require_corporation(recipient_id)
         if percent <= 0 or percent > 100:
             raise ValueError("Issued stock percent must be between 0 and 100")
+        if not self.has_contributed_property(issuer_id, recipient_id):
+            raise ValueError("Stock issuance requires property contributed by recipient")
 
         existing_total = self.total_issued_percent(issuer_id)
         if existing_total > 0:
@@ -257,40 +250,15 @@ class WorldState:
             percent=percent,
             basis=basis,
         )
-        self.recompute_section_956()
         return stock_id
 
-    def recompute_section_956(self) -> None:
-        self.recompute_tax()
+    def record_direct_repatriation(self, amount: float) -> None:
+        self.ledger.direct_repatriated_cash += amount
 
-    def recompute_tax(self) -> None:
-        domestic_stock_basis = self.section_956_us_property_basis()
-        direct_cash_inclusion = min(
-            self.ledger.direct_repatriated_cash,
-            self.applicable_earnings,
-        )
-        remaining_applicable_earnings = (
-            self.applicable_earnings - direct_cash_inclusion
-        )
-        section_956_inclusion = min(
-            domestic_stock_basis,
-            remaining_applicable_earnings,
-        )
-        total_inclusion = direct_cash_inclusion + section_956_inclusion
-        tax_due = total_inclusion * self.tax_rate
+    def pay_incremental_tax(self, tax_due: float) -> None:
         incremental_tax = tax_due - self.ledger.tax_paid
-
         if incremental_tax > 0:
             self._pay_tax(incremental_tax)
-
-        self.ledger.direct_cash_inclusion = direct_cash_inclusion
-        self.ledger.section_956_inclusion = section_956_inclusion
-        self.ledger.total_inclusion = total_inclusion
-        self.ledger.tax_due = tax_due
-
-    def apply_direct_repatriation_tax(self, amount: float) -> None:
-        self.ledger.direct_repatriated_cash += amount
-        self.recompute_tax()
 
     def section_956_us_property_basis(self) -> float:
         cfc = self.cfc_id
@@ -361,6 +329,26 @@ class WorldState:
 
         return contributed_cash and contributed_own_stock
 
+    def has_contributed_property(self, issuer_id: str, contributor_id: str) -> bool:
+        return any(
+            cash.owner_id == issuer_id
+            and cash.contributed_by_id == contributor_id
+            for cash in self.cash.values()
+        ) or any(
+            stock.holder_id == issuer_id
+            and stock.contributed_by_id == contributor_id
+            for stock in self.stock.values()
+        )
+
+    def has_qualifying_zero_basis_cfc_stock(self, issuer_id: str) -> bool:
+        return any(
+            stock.holder_id == self.cfc_id
+            and stock.issuer_id == issuer_id
+            and stock.percent >= 80.0
+            and stock.basis == 0.0
+            for stock in self.stock.values()
+        )
+
     def direct_transfer_baseline_net(self) -> float:
         return self.applicable_earnings * (1.0 - self.tax_rate)
 
@@ -374,10 +362,9 @@ class WorldState:
     ) -> WorldState:
         state = cls(applicable_earnings=applicable_earnings, tax_rate=tax_rate)
         state.add_corporation("T", TaxResidence.US)
-        state.add_corporation("FSub", TaxResidence.FOREIGN)
+        state.add_subcorporation("T", "FSub", TaxResidence.FOREIGN)
         state.add_cash("T", t_cash, t_cash, cash_id="t_cash")
         state.add_cash("FSub", fsub_cash, fsub_cash, cash_id="fsub_cash")
-        state.add_stock("FSub", "T", 100.0, 0.0, stock_id="t_owns_fsub")
         state.add_stock("FSub", "FSub", 100.0, 0.0, stock_id="fsub_own_stock")
         return state
 

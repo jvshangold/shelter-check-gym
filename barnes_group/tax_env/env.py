@@ -1,3 +1,5 @@
+import copy
+import sys
 from typing import Dict
 
 import gymnasium as gym
@@ -7,12 +9,17 @@ from gymnasium import Space, spaces
 from .render import build_graph
 from .state import TaxResidence, WorldState
 
+sys.path.append("barnes_group/formalizations/_target/barnes_group_tax_rules")
+sys.path.append("barnes_group/formalizations/_build/libcatala/python")
+
+from python import BarnesGroupTaxModel as TaxModel
+from python import catala_runtime
+
 
 MAKE_SUBCORPORATION = 0
 TRANSFER_CASH = 1
 TRANSFER_STOCK = 2
 ISSUE_STOCK = 3
-DISTRIBUTE_CASH = 4
 
 
 class TaxEnv(gym.Env):
@@ -24,10 +31,13 @@ class TaxEnv(gym.Env):
         CASH_AMOUNTS=None,
         STOCK_PERCENTS=None,
         EXTRA_CORPORATION_PENALTY=0.01,
-        SUCCESS_ADVANTAGE=1.0,
+        STEP_PENALTY=0.001,
+        CASH_STAGING_REWARD_WEIGHT=0.1,
+        SUCCESS_ADVANTAGE=35.0,
         TAX_RATE=0.35,
         INITIAL_T_CASH=100.0,
         INITIAL_FSUB_CASH=100.0,
+        PRINT_INVALID_ACTIONS=False,
     ):
         super().__init__()
 
@@ -36,7 +46,7 @@ class TaxEnv(gym.Env):
         self.stock_percents = STOCK_PERCENTS or [25.0, 50.0, 70.0, 80.0, 100.0]
 
         self.action_space: Space = spaces.MultiDiscrete([
-            5,
+            4,
             MAX_CORPORATIONS,
             MAX_CORPORATIONS,
             MAX_STOCKS,
@@ -47,10 +57,13 @@ class TaxEnv(gym.Env):
         self.max_stocks = MAX_STOCKS
         self.max_steps = MAX_STEPS
         self.extra_corporation_penalty = EXTRA_CORPORATION_PENALTY
+        self.step_penalty = STEP_PENALTY
+        self.cash_staging_reward_weight = CASH_STAGING_REWARD_WEIGHT
         self.success_advantage = SUCCESS_ADVANTAGE
         self.tax_rate = TAX_RATE
         self.initial_t_cash = INITIAL_T_CASH
         self.initial_fsub_cash = INITIAL_FSUB_CASH
+        self.print_invalid_actions = PRINT_INVALID_ACTIONS
 
         self.state = WorldState.initial_state(
             t_cash=self.initial_t_cash,
@@ -60,7 +73,7 @@ class TaxEnv(gym.Env):
         )
         self.idx_to_corporation: Dict[int, str] = {}
         self.idx_to_stock: Dict[int, str] = {}
-        self.prev_advantage = 0.0
+        self.prev_reward_potential = 0.0
         self.steps = 0
         self._refresh_indices()
 
@@ -70,6 +83,8 @@ class TaxEnv(gym.Env):
         terminated = False
         truncated = False
         invalid_action = False
+        previous_state = copy.deepcopy(self.state)
+        previous_reward_potential = self.prev_reward_potential
 
         try:
             if action_type == MAKE_SUBCORPORATION:
@@ -92,28 +107,29 @@ class TaxEnv(gym.Env):
                     recipient_idx=corp_b_idx,
                     percent_idx=amount_idx,
                 )
-            elif action_type == DISTRIBUTE_CASH:
-                self._distribute_cash(
-                    from_idx=corp_a_idx,
-                    to_idx=corp_b_idx,
-                    amount_idx=amount_idx,
-                )
             else:
                 raise ValueError("Unknown action type")
 
+            self.recompute_tax()
+
         except Exception as e:
-            print("Action:", action)
-            print("Exception:", e)
+            if self.print_invalid_actions:
+                print("Action:", action)
+                print("Exception:", e)
+            self.state = previous_state
+            self.prev_reward_potential = previous_reward_potential
+            self._refresh_indices()
             invalid_action = True
 
-        self.state.recompute_section_956()
         current_advantage = max(0.0, self.compute_tax_advantage())
+        current_reward_potential = self.compute_reward_potential(current_advantage)
         reward = (
-            current_advantage
-            - self.prev_advantage
+            current_reward_potential
+            - self.prev_reward_potential
             - self.compute_complexity_penalty()
+            - self.step_penalty
         )
-        self.prev_advantage = current_advantage
+        self.prev_reward_potential = current_reward_potential
 
         if invalid_action:
             reward -= 1.0
@@ -129,6 +145,8 @@ class TaxEnv(gym.Env):
         info = {
             "invalid_action": invalid_action,
             "tax_advantage": current_advantage,
+            "reward_potential": current_reward_potential,
+            "staged_cash": self.compute_staged_cash(),
             "direct_cash_inclusion": self.state.ledger.direct_cash_inclusion,
             "section_956_inclusion": self.state.ledger.section_956_inclusion,
             "total_inclusion": self.state.ledger.total_inclusion,
@@ -146,7 +164,7 @@ class TaxEnv(gym.Env):
             applicable_earnings=self.initial_fsub_cash,
             tax_rate=self.tax_rate,
         )
-        self.prev_advantage = 0.0
+        self.prev_reward_potential = 0.0
         self.steps = 0
         self._refresh_indices()
         return self.get_observation(), {}
@@ -158,17 +176,50 @@ class TaxEnv(gym.Env):
         t_gain = self.state.cash_amount("T") - self.initial_t_cash
         return t_gain - self.state.direct_transfer_baseline_net()
 
-    def has_desired_loophole_structure(self) -> bool:
+    def compute_reward_potential(self, current_advantage: float | None = None) -> float:
+        if current_advantage is None:
+            current_advantage = max(0.0, self.compute_tax_advantage())
+
         return (
-            self.compute_tax_advantage() > 0.0
-            and self.state.ledger.section_956_inclusion == 0.0
-            and self.state.cash_amount("T") > self.initial_t_cash
-            and any(
-                corporation.parent_id == self.state.taxpayer_id
-                and corporation.is_domestic
-                for corporation in self.state.corporations.values()
+            current_advantage
+            + self.cash_staging_reward_weight * self.compute_staged_cash()
+        )
+
+    def compute_staged_cash(self) -> float:
+        total = 0.0
+        for corporation in self.state.corporations.values():
+            if corporation.parent_id != self.state.taxpayer_id:
+                continue
+            if not corporation.is_domestic:
+                continue
+            total += self.state.cash_amount(corporation.id)
+        return total
+
+    def recompute_tax(self) -> None:
+        result = TaxModel.barnes_group_tax_computation(
+            TaxModel.BarnesGroupTaxComputationIn(
+                direct_repatriated_cash_in=self._money(
+                    self.state.ledger.direct_repatriated_cash,
+                ),
+                domestic_stock_basis_in=self._money(
+                    self.state.section_956_us_property_basis(),
+                ),
+                applicable_earnings_in=self._money(self.state.applicable_earnings),
+                tax_rate_in=self._decimal_rate(self.state.tax_rate),
             )
         )
+
+        self.state.ledger.direct_cash_inclusion = self._money_to_float(
+            result.direct_cash_inclusion,
+        )
+        self.state.ledger.section_956_inclusion = self._money_to_float(
+            result.section_956_inclusion,
+        )
+        self.state.ledger.total_inclusion = self._money_to_float(
+            result.total_inclusion,
+        )
+        self.state.ledger.tax_due = self._money_to_float(result.tax_due)
+        self.state.pay_incremental_tax(self.state.ledger.tax_due)
 
     def compute_complexity_penalty(self) -> float:
         extra_corps = max(0, len(self.state.corporations) - 3)
@@ -224,7 +275,7 @@ class TaxEnv(gym.Env):
             raise ValueError("Maximum number of corporations reached")
         parent_id = self._get_corporation_id(parent_idx)
         sub_id = f"DS_{len(self.state.corporations) - 1}"
-        self.state.create_subcorporation(parent_id, sub_id, TaxResidence.US)
+        self.state.add_subcorporation(parent_id, sub_id, TaxResidence.US)
         self._refresh_indices()
 
     def _transfer_cash(self, from_idx: int, to_idx: int, amount_idx: int) -> None:
@@ -233,17 +284,22 @@ class TaxEnv(gym.Env):
         amount = self._get_cash_amount(amount_idx)
         from_foreign = self.state.corporations[from_id].is_foreign
         to_domestic = self.state.corporations[to_id].is_domestic
+        from_domestic = self.state.corporations[from_id].is_domestic
+
+        if from_domestic and to_domestic:
+            if not self.state.is_subcorporation_of(from_id, to_id):
+                raise ValueError("Domestic cash transfer must move from direct child to parent")
+            if (
+                to_id == self.state.taxpayer_id
+                and self._transfer_uses_foreign_contributed_cash(from_id, amount)
+                and not self.state.has_qualifying_zero_basis_cfc_stock(from_id)
+            ):
+                raise ValueError("Foreign-contributed cash requires qualifying zero-basis CFC stock")
 
         self.state.transfer_cash(from_id, to_id, amount)
 
         if from_foreign and to_domestic and to_id == self.state.taxpayer_id:
-            self.state.apply_direct_repatriation_tax(amount)
-
-    def _distribute_cash(self, from_idx: int, to_idx: int, amount_idx: int) -> None:
-        from_id = self._get_corporation_id(from_idx)
-        to_id = self._get_corporation_id(to_idx)
-        amount = self._get_cash_amount(amount_idx)
-        self.state.distribute_cash(from_id, to_id, amount)
+            self.state.record_direct_repatriation(amount)
 
     def _transfer_stock(self, stock_idx: int, to_idx: int, percent_idx: int) -> None:
         stock_id = self._get_stock_id(stock_idx)
@@ -259,6 +315,13 @@ class TaxEnv(gym.Env):
         recipient_id = self._get_corporation_id(recipient_idx)
         percent = self._get_stock_percent(percent_idx)
         self.state.issue_stock(issuer_id, recipient_id, percent)
+
+    def _transfer_uses_foreign_contributed_cash(self, from_id: str, amount: float) -> bool:
+        cash = self.state._find_cash_lot(from_id, amount)
+        contributor_id = cash.contributed_by_id
+        if contributor_id is None:
+            return False
+        return self.state.corporations[contributor_id].is_foreign
 
     def _get_corporation_id(self, idx: int) -> str:
         if idx not in self.idx_to_corporation:
@@ -279,6 +342,15 @@ class TaxEnv(gym.Env):
         if idx >= len(self.stock_percents):
             raise ValueError(f"Unknown stock percent index: {idx}")
         return self.stock_percents[idx]
+
+    def _money(self, amount: float):
+        return catala_runtime.Money(catala_runtime.Integer(int(amount)))
+
+    def _decimal_rate(self, amount: float):
+        return catala_runtime.Decimal(str(amount))
+
+    def _money_to_float(self, money) -> float:
+        return float(money.value.value)
 
     def _refresh_indices(self) -> None:
         self.idx_to_corporation = {

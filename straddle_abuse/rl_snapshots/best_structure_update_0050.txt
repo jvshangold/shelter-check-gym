@@ -1,22 +1,18 @@
 update: 50
 snapshot_index: 2
-tax_advantage: 21.47
-tax_reduction: 21.47
-terminated: False
+tax_advantage: 37.0
+tax_reduction: 37.0
+terminated: True
 truncated: False
 invalid_action: False
 
 actions:
-1. enter_straddle(amount=500.0)
-2. realize_gain(straddle_id=1, fraction=0.25)
-3. realize_gain(straddle_id=1, fraction=0.75)
-4. invest(individual=T, fraction=1.0)
-5. realize_loss(straddle_id=1, fraction=1.0)
-6. enter_straddle(amount=300.0)
-7. realize_loss(straddle_id=2, fraction=0.25)
-8. realize_loss(straddle_id=2, fraction=0.25)
-9. realize_loss(straddle_id=2, fraction=0.25)
-10. enter_straddle(amount=300.0)
-11. enter_straddle(amount=500.0)
-12. realize_gain(straddle_id=1, fraction=0.5)
-13. realize_loss(straddle_id=2, fraction=1.0)
+1. enter_straddle(amount=900.0)
+2. enter_straddle(amount=900.0)
+3. realize_gain(straddle_id=2, fraction=1.0)
+4. realize_gain(straddle_id=1, fraction=0.5)
+5. realize_gain(straddle_id=1, fraction=1.0)
+6. invest(individual=T, fraction=0.5)
+7. realize_loss(straddle_id=1, fraction=0.5)
+8. realize_loss(straddle_id=2, fraction=0.5)
+9. realize_loss(straddle_id=1, fraction=1.0)

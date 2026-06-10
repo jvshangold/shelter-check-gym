@@ -7,9 +7,9 @@ declaration scope BarnesGroupTaxComputation:
   input applicable_earnings content money
   input tax_rate content decimal
 
-  internal direct_cash_inclusion content money
   internal remaining_applicable_earnings content money
 
+  output direct_cash_inclusion content money
   output total_inclusion content money
   output section_956_inclusion content money
   output tax_due content money

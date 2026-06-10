@@ -14,13 +14,15 @@ from . import Integer_en as integer_en
 from . import Decimal_en as decimal_en
 
 class BarnesGroupTaxComputation:
-    def __init__(self, section_956_inclusion: Money, tax_due: Money) -> None:
+    def __init__(self, direct_cash_inclusion: Money, total_inclusion: Money, section_956_inclusion: Money, tax_due: Money) -> None:
+        self.direct_cash_inclusion = direct_cash_inclusion
+        self.total_inclusion = total_inclusion
         self.section_956_inclusion = section_956_inclusion
         self.tax_due = tax_due
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, BarnesGroupTaxComputation):
-            return (self.section_956_inclusion == other.section_956_inclusion and self.tax_due == other.tax_due)
+            return (self.direct_cash_inclusion == other.direct_cash_inclusion and self.total_inclusion == other.total_inclusion and self.section_956_inclusion == other.section_956_inclusion and self.tax_due == other.tax_due)
         else:
             return False
 
@@ -28,17 +30,18 @@ class BarnesGroupTaxComputation:
         return not (self == other)
 
     def __str__(self) -> str:
-        return "BarnesGroupTaxComputation(section_956_inclusion={},tax_due={})".format(self.section_956_inclusion, self.tax_due)
+        return "BarnesGroupTaxComputation(direct_cash_inclusion={},total_inclusion={},section_956_inclusion={},tax_due={})".format(self.direct_cash_inclusion, self.total_inclusion, self.section_956_inclusion, self.tax_due)
 
 class BarnesGroupTaxComputationIn:
-    def __init__(self, domestic_stock_basis_in: Money, applicable_earnings_in: Money, tax_rate_in: Decimal) -> None:
+    def __init__(self, direct_repatriated_cash_in: Money, domestic_stock_basis_in: Money, applicable_earnings_in: Money, tax_rate_in: Decimal) -> None:
+        self.direct_repatriated_cash_in = direct_repatriated_cash_in
         self.domestic_stock_basis_in = domestic_stock_basis_in
         self.applicable_earnings_in = applicable_earnings_in
         self.tax_rate_in = tax_rate_in
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, BarnesGroupTaxComputationIn):
-            return (self.domestic_stock_basis_in == other.domestic_stock_basis_in and self.applicable_earnings_in == other.applicable_earnings_in and self.tax_rate_in == other.tax_rate_in)
+            return (self.direct_repatriated_cash_in == other.direct_repatriated_cash_in and self.domestic_stock_basis_in == other.domestic_stock_basis_in and self.applicable_earnings_in == other.applicable_earnings_in and self.tax_rate_in == other.tax_rate_in)
         else:
             return False
 
@@ -46,16 +49,23 @@ class BarnesGroupTaxComputationIn:
         return not (self == other)
 
     def __str__(self) -> str:
-        return "BarnesGroupTaxComputationIn(domestic_stock_basis_in={},applicable_earnings_in={},tax_rate_in={})".format(self.domestic_stock_basis_in, self.applicable_earnings_in, self.tax_rate_in)
+        return "BarnesGroupTaxComputationIn(direct_repatriated_cash_in={},domestic_stock_basis_in={},applicable_earnings_in={},tax_rate_in={})".format(self.direct_repatriated_cash_in, self.domestic_stock_basis_in, self.applicable_earnings_in, self.tax_rate_in)
 
 
 def barnes_group_tax_computation(barnes_group_tax_computation_in:BarnesGroupTaxComputationIn):
+    direct_repatriated_cash = (barnes_group_tax_computation_in.direct_repatriated_cash_in)
     domestic_stock_basis = (barnes_group_tax_computation_in.domestic_stock_basis_in)
     applicable_earnings = (barnes_group_tax_computation_in.applicable_earnings_in)
     tax_rate = (barnes_group_tax_computation_in.tax_rate_in)
-    if (domestic_stock_basis < applicable_earnings):
+    if (direct_repatriated_cash < applicable_earnings):
+        direct_cash_inclusion = (direct_repatriated_cash)
+    else:
+        direct_cash_inclusion = (applicable_earnings)
+    remaining_applicable_earnings = ((applicable_earnings - direct_cash_inclusion))
+    if (domestic_stock_basis < remaining_applicable_earnings):
         section_956_inclusion = (domestic_stock_basis)
     else:
-        section_956_inclusion = (applicable_earnings)
-    tax_due = ((section_956_inclusion * tax_rate))
-    return BarnesGroupTaxComputation(section_956_inclusion = section_956_inclusion, tax_due = tax_due)
+        section_956_inclusion = (remaining_applicable_earnings)
+    total_inclusion = ((direct_cash_inclusion + section_956_inclusion))
+    tax_due = ((total_inclusion * tax_rate))
+    return BarnesGroupTaxComputation(direct_cash_inclusion = direct_cash_inclusion, total_inclusion = total_inclusion, section_956_inclusion = section_956_inclusion, tax_due = tax_due)
