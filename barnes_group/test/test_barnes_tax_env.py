@@ -1,10 +1,9 @@
 import torch
 
 from barnes_group.tax_env.env import (
-    ISSUE_STOCK,
+    CONTRIBUTE_FOR_STOCK,
     MAKE_SUBCORPORATION,
     TRANSFER_CASH,
-    TRANSFER_STOCK,
     TaxEnv,
 )
 from barnes_group.tax_env.model import GNN
@@ -50,7 +49,7 @@ def test_barnes_exchange_gives_zero_basis_domestic_stock():
 
     state.transfer_stock("fsub_own_stock", "DS", 100.0)
     state.transfer_cash("FSub", "DS", 100.0)
-    stock_id = state.issue_stock("DS", "FSub", 80.0)
+    stock_id = state.exchange_for_stock("DS", "FSub", 80.0)
     env = TaxEnv()
     env.state = state
     env.recompute_tax()
@@ -69,7 +68,7 @@ def test_adversarial_70_percent_exchange_preserves_cash_basis_for_956():
 
     state.transfer_stock("fsub_own_stock", "DS", 100.0)
     state.transfer_cash("FSub", "DS", 100.0)
-    stock_id = state.issue_stock("DS", "FSub", 70.0)
+    stock_id = state.exchange_for_stock("DS", "FSub", 70.0)
     env = TaxEnv()
     env.state = state
     env.recompute_tax()
@@ -82,16 +81,45 @@ def test_adversarial_70_percent_exchange_preserves_cash_basis_for_956():
     assert state.ledger.tax_paid == 35.0
 
 
-def test_stock_issuance_requires_contributed_property():
+def test_exchange_for_stock_requires_contributed_property():
     state = initialize()
     state.add_subcorporation("T", "DS")
 
     try:
-        state.issue_stock("DS", "FSub", 80.0)
+        state.exchange_for_stock("DS", "FSub", 80.0)
     except ValueError as exc:
-        assert "requires property contributed" in str(exc)
+        assert "requires unexchanged property" in str(exc)
     else:
-        raise AssertionError("stock issuance without contributed property should fail")
+        raise AssertionError("exchange without contributed property should fail")
+
+
+def test_exchange_for_stock_consumes_contributed_property_for_future_exchange():
+    state = initialize()
+    state.add_subcorporation("T", "DS")
+
+    state.transfer_stock("fsub_own_stock", "DS", 100.0)
+    state.transfer_cash("FSub", "DS", 100.0)
+    stock_id = state.exchange_for_stock("DS", "FSub", 80.0)
+
+    assert state.has_qualifying_zero_basis_cfc_stock("DS")
+    assert not state.has_unexchanged_contributed_property("DS", "FSub")
+    assert any(
+        cash.contributed_by_id == "FSub"
+        and cash.exchanged_for_stock_id == stock_id
+        for cash in state.cash.values()
+    )
+    assert any(
+        stock.contributed_by_id == "FSub"
+        and stock.exchanged_for_stock_id == stock_id
+        for stock in state.stock.values()
+    )
+
+    try:
+        state.exchange_for_stock("DS", "FSub", 25.0)
+    except ValueError as exc:
+        assert "requires unexchanged property" in str(exc)
+    else:
+        raise AssertionError("exchange should not reuse contributed property")
 
 
 def test_direct_repatriation_is_baseline_not_success():
@@ -103,7 +131,7 @@ def test_direct_repatriation_is_baseline_not_success():
         1,
         0,
         0,
-        3,
+        0,
     ])
 
     assert env.state.cash_amount("T") == 165.0
@@ -113,6 +141,27 @@ def test_direct_repatriation_is_baseline_not_success():
     assert env.compute_tax_advantage() == 0.0
     assert not terminated
     assert not info["invalid_action"]
+
+
+def test_foreign_contribution_directly_to_taxpayer_is_direct_repatriation():
+    env = TaxEnv()
+    env.reset()
+
+    obs, reward, terminated, truncated, info = env.step([
+        CONTRIBUTE_FOR_STOCK,
+        0,
+        1,
+        1,
+        0,
+    ])
+
+    assert not info["invalid_action"]
+    assert env.state.cash_amount("T") == 165.0
+    assert env.state.ledger.direct_cash_inclusion == 100.0
+    assert env.state.ledger.total_inclusion == 100.0
+    assert env.compute_tax_advantage() == 0.0
+    assert info["tax_advantage"] == 0.0
+    assert not terminated
 
 
 def test_direct_cash_and_956_basis_share_applicable_earnings_cap():
@@ -132,12 +181,11 @@ def test_direct_cash_and_956_basis_share_applicable_earnings_cap():
     assert state.ledger.tax_paid == 35.0
 
 
-def test_domestic_cash_only_moves_from_direct_child_to_parent():
+def test_cash_transfer_rejects_non_repatriation_and_non_sub_to_taxpayer_moves():
     env = TaxEnv()
     env.reset()
 
     env.step([MAKE_SUBCORPORATION, 0, 0, 0, 0])
-
     obs, reward, terminated, truncated, info = env.step([
         TRANSFER_CASH,
         0,
@@ -152,7 +200,7 @@ def test_domestic_cash_only_moves_from_direct_child_to_parent():
     assert env.state.cash_amount("DS_1") == 0.0
 
 
-def test_staged_cash_in_direct_domestic_child_shapes_reward():
+def test_foreign_cash_cannot_be_staged_by_transfer_cash():
     env = TaxEnv()
     env.reset()
 
@@ -162,36 +210,62 @@ def test_staged_cash_in_direct_domestic_child_shapes_reward():
         1,
         2,
         0,
-        3,
-    ])
-
-    assert not info["invalid_action"]
-    assert not terminated
-    assert env.compute_tax_advantage() == -65.0
-    assert info["tax_advantage"] == 0.0
-    assert info["staged_cash"] == 100.0
-    assert info["reward_potential"] == 10.0
-    assert reward > 0.0
-
-
-def test_foreign_contributed_cash_cannot_move_to_taxpayer_without_qualifying_stock():
-    env = TaxEnv()
-    env.reset()
-
-    env.step([MAKE_SUBCORPORATION, 0, 0, 0, 0])
-    env.step([TRANSFER_CASH, 1, 2, 0, 3])
-    obs, reward, terminated, truncated, info = env.step([
-        TRANSFER_CASH,
-        2,
         0,
-        0,
-        3,
     ])
 
     assert info["invalid_action"]
     assert not terminated
-    assert env.state.cash_amount("T") == 100.0
+    assert info["tax_advantage"] == 0.0
+    assert env.state.cash_amount("FSub") == 100.0
+    assert env.state.cash_amount("DS_1") == 0.0
+
+
+def test_contribute_for_stock_stages_cash_and_gives_fsub_ds_stock():
+    env = TaxEnv()
+    env.reset()
+
+    env.step([MAKE_SUBCORPORATION, 0, 0, 0, 0])
+    obs, reward, terminated, truncated, info = env.step([
+        CONTRIBUTE_FOR_STOCK,
+        2,
+        1,
+        1,
+        0,
+    ])
+
+    assert not info["invalid_action"]
+    assert not terminated
     assert env.state.cash_amount("DS_1") == 100.0
+    assert env.state.ownership_percent("FSub", "DS_1") == 80.0
+    assert env.state.section_956_us_property_basis() == 0.0
+    assert reward == 0.0
+
+
+def test_contribute_for_stock_requires_contributor_own_stock():
+    env = TaxEnv()
+    env.reset()
+
+    env.step([CONTRIBUTE_FOR_STOCK, 0, 1, 1, 0])
+    issued_stock = next(
+        stock_id
+        for stock_id, stock in env.state.stock.items()
+        if stock.issuer_id == "T" and stock.holder_id == "FSub"
+    )
+    stock_idx = next(
+        idx
+        for idx, stock_id in env.idx_to_stock.items()
+        if stock_id == issued_stock
+    )
+    obs, reward, terminated, truncated, info = env.step([
+        CONTRIBUTE_FOR_STOCK,
+        0,
+        1,
+        stock_idx,
+        0,
+    ])
+
+    assert info["invalid_action"]
+    assert not terminated
 
 
 def test_env_can_execute_barnes_strategy():
@@ -199,19 +273,19 @@ def test_env_can_execute_barnes_strategy():
     env.reset()
 
     env.step([MAKE_SUBCORPORATION, 0, 0, 0, 0])
-    env.step([TRANSFER_STOCK, 0, 2, 1, 4])
-    env.step([TRANSFER_CASH, 1, 2, 0, 3])
-    env.step([ISSUE_STOCK, 2, 1, 0, 3])
+    env.step([CONTRIBUTE_FOR_STOCK, 2, 1, 1, 0])
     obs, reward, terminated, truncated, info = env.step([
         TRANSFER_CASH,
         2,
         0,
         0,
-        3,
+        0,
     ])
 
     assert env.state.cash_amount("T") == 200.0
     assert env.compute_tax_advantage() == 35.0
+    assert reward == 1.0
+    assert info["normalized_tax_advantage"] == 1.0
     assert terminated
     assert not truncated
     assert not info["invalid_action"]
@@ -223,13 +297,21 @@ def test_cash_routed_through_fsub_child_is_not_barnes_success():
     env.reset()
 
     env.step([MAKE_SUBCORPORATION, 1, 0, 0, 0])  # make DS_1 as a child of FSub
-    env.step([TRANSFER_CASH, 1, 2, 0, 3])  # FSub -> DS_1
+    obs, reward, terminated, truncated, info = env.step([
+        CONTRIBUTE_FOR_STOCK,
+        2,
+        1,
+        1,
+        0,
+    ])
+    assert not info["invalid_action"]
+
     obs, reward, terminated, truncated, info = env.step([
         TRANSFER_CASH,
         2,
         0,
         0,
-        3,
+        0,
     ])
 
     assert info["invalid_action"]
@@ -247,11 +329,16 @@ def test_render_graph():
     assert "corporation" in data.node_types
     assert "cash" in data.node_types
     assert "stock" in data.node_types
-    assert data["corporation"].x.shape == (3, 5)
-    assert data["cash"].x.shape == (2, 2)
-    assert data["stock"].x.shape == (3, 4)
-    assert ("corporation", "has_subsidiary", "corporation") in data.edge_types
-    assert data["corporation", "has_subsidiary", "corporation"].edge_index.shape == (2, 2)
+    assert data["corporation"].x.shape == (3, 8)
+    assert data["cash"].x.shape == (2, 7)
+    assert data["stock"].x.shape == (3, 11)
+    assert set(data.edge_types) == {
+        ("corporation", "owns_cash", "cash"),
+        ("cash", "owned_by", "corporation"),
+        ("corporation", "holds_stock", "stock"),
+        ("stock", "held_by", "corporation"),
+    }
+    assert data["corporation", "holds_stock", "stock"].edge_index.shape == (2, 3)
 
 
 def test_gnn():

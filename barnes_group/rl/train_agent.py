@@ -7,10 +7,9 @@ from barnes_group.rl.model import PolicyValueNet
 from barnes_group.rl.ppo import masked_categorical, ppo_update
 from barnes_group.rl.rollout import RolloutBuffer
 from barnes_group.tax_env.env import (
-    ISSUE_STOCK,
+    CONTRIBUTE_FOR_STOCK,
     MAKE_SUBCORPORATION,
     TRANSFER_CASH,
-    TRANSFER_STOCK,
     TaxEnv,
 )
 
@@ -18,13 +17,12 @@ from barnes_group.tax_env.env import (
 ACTION_NAMES = {
     MAKE_SUBCORPORATION: "make_subcorporation",
     TRANSFER_CASH: "transfer_cash",
-    TRANSFER_STOCK: "transfer_stock",
-    ISSUE_STOCK: "issue_stock",
+    CONTRIBUTE_FOR_STOCK: "contribute_for_stock",
 }
 
 
 def make_action_mask(env, device):
-    mask = [False, False, False, False]
+    mask = [False, False, False]
 
     mask[MAKE_SUBCORPORATION] = len(env.state.corporations) < env.max_corporations
     mask[TRANSFER_CASH] = any(
@@ -33,17 +31,14 @@ def make_action_mask(env, device):
         for to_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
         for amount in env.cash_amounts
     )
-    mask[TRANSFER_STOCK] = any(
-        _can_transfer_stock(env, stock_id, to_id)
-        for stock_id in _indexed_values(env.idx_to_stock, env.max_stocks)
-        for to_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
-    )
-    mask[ISSUE_STOCK] = (
+    mask[CONTRIBUTE_FOR_STOCK] = (
         len(env.state.stock) < env.max_stocks
         and any(
-            _can_issue_stock(env, issuer_id, recipient_id)
+            _can_contribute_for_stock(env, issuer_id, contributor_id, stock_id, amount_idx)
             for issuer_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
-            for recipient_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
+            for contributor_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
+            for stock_id in _indexed_values(env.idx_to_stock, env.max_stocks)
+            for amount_idx in range(len(env.cash_amounts))
         )
     )
 
@@ -72,15 +67,17 @@ def make_corp_a_mask(env, action_type, device):
                     for amount in env.cash_amounts
                 )
             )
-        elif action_type == ISSUE_STOCK:
+        elif action_type == CONTRIBUTE_FOR_STOCK:
             mask.append(
                 len(env.state.stock) < env.max_stocks
                 and any(
-                    _can_issue_stock(env, corp_id, recipient_id)
-                    for recipient_id in _indexed_values(
+                    _can_contribute_for_stock(env, corp_id, contributor_id, stock_id, amount_idx)
+                    for contributor_id in _indexed_values(
                         env.idx_to_corporation,
                         env.max_corporations,
                     )
+                    for stock_id in _indexed_values(env.idx_to_stock, env.max_stocks)
+                    for amount_idx in range(len(env.cash_amounts))
                 )
             )
         else:
@@ -118,35 +115,28 @@ def make_corp_b_mask(env, action_type, device, corp_a_idx=None, stock_idx=None):
                         for amount in env.cash_amounts
                     )
                 )
-        elif action_type == TRANSFER_STOCK:
-            if stock_id is None:
-                mask.append(
-                    any(
-                        _can_transfer_stock(env, candidate_stock_id, corp_id)
-                        for candidate_stock_id in _indexed_values(
-                            env.idx_to_stock,
-                            env.max_stocks,
-                        )
-                    )
-                )
-            else:
-                mask.append(_can_transfer_stock(env, stock_id, corp_id))
-        elif action_type == ISSUE_STOCK:
+        elif action_type == CONTRIBUTE_FOR_STOCK:
             if corp_a_id is None:
                 mask.append(
                     len(env.state.stock) < env.max_stocks
                     and any(
-                        _can_issue_stock(env, issuer_id, corp_id)
+                        _can_contribute_for_stock(env, issuer_id, corp_id, stock_id, amount_idx)
                         for issuer_id in _indexed_values(
                             env.idx_to_corporation,
                             env.max_corporations,
                         )
+                        for stock_id in _indexed_values(env.idx_to_stock, env.max_stocks)
+                        for amount_idx in range(len(env.cash_amounts))
                     )
                 )
             else:
                 mask.append(
                     len(env.state.stock) < env.max_stocks
-                    and _can_issue_stock(env, corp_a_id, corp_id)
+                    and any(
+                        _can_contribute_for_stock(env, corp_a_id, corp_id, stock_id, amount_idx)
+                        for stock_id in _indexed_values(env.idx_to_stock, env.max_stocks)
+                        for amount_idx in range(len(env.cash_amounts))
+                    )
                 )
         else:
             mask.append(False)
@@ -154,32 +144,45 @@ def make_corp_b_mask(env, action_type, device, corp_a_idx=None, stock_idx=None):
     return torch.tensor(mask, dtype=torch.bool, device=device)
 
 
-def make_stock_mask(env, action_type, device):
+def make_stock_mask(env, action_type, device, corp_a_idx=None, corp_b_idx=None):
     mask = []
+    corp_a_id = None if corp_a_idx is None else env.idx_to_corporation.get(corp_a_idx)
+    corp_b_id = None if corp_b_idx is None else env.idx_to_corporation.get(corp_b_idx)
 
     for i in range(env.max_stocks):
         stock_id = env.idx_to_stock.get(i)
 
         if stock_id is None:
             mask.append(False)
-        elif action_type == TRANSFER_STOCK:
-            mask.append(
-                any(
-                    _can_transfer_stock(env, stock_id, to_id)
-                    for to_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
+        elif action_type == CONTRIBUTE_FOR_STOCK:
+            if corp_a_id is None or corp_b_id is None:
+                mask.append(
+                    any(
+                        _can_contribute_for_stock(env, issuer_id, contributor_id, stock_id, amount_idx)
+                        for issuer_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
+                        for contributor_id in _indexed_values(env.idx_to_corporation, env.max_corporations)
+                        for amount_idx in range(len(env.cash_amounts))
+                    )
                 )
-            )
+            else:
+                mask.append(
+                    any(
+                        _can_contribute_for_stock(env, corp_a_id, corp_b_id, stock_id, amount_idx)
+                        for amount_idx in range(len(env.cash_amounts))
+                    )
+                )
         else:
             mask.append(False)
 
     return torch.tensor(mask, dtype=torch.bool, device=device)
 
 
-def make_amount_mask(env, action_type, device, corp_a_idx=None, corp_b_idx=None):
+def make_amount_mask(env, action_type, device, corp_a_idx=None, corp_b_idx=None, stock_idx=None):
     max_amounts = max(len(env.cash_amounts), len(env.stock_percents))
     mask = []
     corp_a_id = None if corp_a_idx is None else env.idx_to_corporation.get(corp_a_idx)
     corp_b_id = None if corp_b_idx is None else env.idx_to_corporation.get(corp_b_idx)
+    stock_id = None if stock_idx is None else env.idx_to_stock.get(stock_idx)
 
     for i in range(max_amounts):
         if action_type == TRANSFER_CASH:
@@ -196,23 +199,15 @@ def make_amount_mask(env, action_type, device, corp_a_idx=None, corp_b_idx=None)
                         )
                     )
                 )
-            elif corp_b_id is None:
-                amount = env.cash_amounts[i]
-                mask.append(
-                    any(
-                        _can_transfer_cash(env, corp_a_id, to_id, amount)
-                        for to_id in _indexed_values(
-                            env.idx_to_corporation,
-                            env.max_corporations,
-                        )
-                    )
-                )
             else:
-                mask.append(
-                    _can_transfer_cash(env, corp_a_id, corp_b_id, env.cash_amounts[i])
-                )
-        elif action_type in {TRANSFER_STOCK, ISSUE_STOCK}:
-            mask.append(i < len(env.stock_percents))
+                mask.append(_has_cash_lot(env, corp_a_id, env.cash_amounts[i]))
+        elif action_type == CONTRIBUTE_FOR_STOCK:
+            if i >= len(env.cash_amounts) or i >= len(env.stock_percents):
+                mask.append(False)
+            elif corp_a_id is None or corp_b_id is None or stock_id is None:
+                mask.append(False)
+            else:
+                mask.append(_can_contribute_for_stock(env, corp_a_id, corp_b_id, stock_id, i))
         else:
             mask.append(False)
 
@@ -227,27 +222,21 @@ def _can_transfer_cash(env, from_id, to_id, amount):
     if not _has_cash_lot(env, from_id, amount):
         return False
 
-    if (
-        env.state.corporations[from_id].is_domestic
-        and env.state.corporations[to_id].is_domestic
-    ):
-        if not env.state.is_subcorporation_of(from_id, to_id):
-            return False
-        if (
-            to_id == env.state.taxpayer_id
-            and _transfer_uses_foreign_contributed_cash(env, from_id, amount)
-            and not env.state.has_qualifying_zero_basis_cfc_stock(from_id)
-        ):
-            return False
-
     from_foreign = env.state.corporations[from_id].is_foreign
     to_domestic = env.state.corporations[to_id].is_domestic
-    direct_to_taxpayer = (
+    direct_repatriation = (
         from_foreign
-        and to_domestic
         and to_id == env.state.taxpayer_id
     )
-    if direct_to_taxpayer:
+    domestic_child_to_taxpayer = (
+        env.state.corporations[from_id].is_domestic
+        and to_id == env.state.taxpayer_id
+        and env.state.is_subcorporation_of(from_id, to_id)
+    )
+    if not direct_repatriation and not domestic_child_to_taxpayer:
+        return False
+
+    if direct_repatriation and to_domestic:
         tax_due = min(
             env.state.ledger.direct_repatriated_cash + amount,
             env.state.applicable_earnings,
@@ -289,32 +278,26 @@ def _has_cash_lot_after_transfer(env, from_id, to_id, transfer_amount, owner_id,
     return False
 
 
-def _transfer_uses_foreign_contributed_cash(env, from_id, amount):
-    for cash in env.state.cash.values():
-        if cash.owner_id != from_id or cash.amount < amount:
-            continue
-        contributor_id = cash.contributed_by_id
-        if contributor_id is None:
-            return False
-        return env.state.corporations[contributor_id].is_foreign
-
-    return False
-
-
-def _can_transfer_stock(env, stock_id, to_id):
-    if stock_id not in env.state.stock or to_id not in env.state.corporations:
+def _can_contribute_for_stock(env, issuer_id, contributor_id, stock_id, amount_idx):
+    if issuer_id == contributor_id:
+        return False
+    if issuer_id not in env.state.corporations or contributor_id not in env.state.corporations:
+        return False
+    if stock_id not in env.state.stock:
+        return False
+    if amount_idx >= len(env.cash_amounts) or amount_idx >= len(env.stock_percents):
+        return False
+    if len(env.state.stock) >= env.max_stocks:
         return False
 
     stock = env.state.stock[stock_id]
-    return stock.percent > 0.0 and stock.holder_id != to_id
-
-
-def _can_issue_stock(env, issuer_id, recipient_id):
-    if issuer_id == recipient_id:
+    if stock.holder_id != contributor_id:
         return False
-    if issuer_id not in env.state.corporations or recipient_id not in env.state.corporations:
+    if stock.issuer_id != contributor_id:
         return False
-    if not env.state.has_contributed_property(issuer_id, recipient_id):
+    if stock.percent <= 0.0:
+        return False
+    if not _has_cash_lot(env, contributor_id, env.cash_amounts[amount_idx]):
         return False
     return True
 
@@ -370,7 +353,7 @@ def sample_action(model, env, obs, device, random_action_prob=0.0):
     }
     used_masks = {"action": action_mask}
 
-    if action_type_int in {MAKE_SUBCORPORATION, TRANSFER_CASH, ISSUE_STOCK}:
+    if action_type_int in {MAKE_SUBCORPORATION, TRANSFER_CASH, CONTRIBUTE_FOR_STOCK}:
         corp_a_mask = make_corp_a_mask(env, action_type_int, device)
         corp_a, corp_a_log_prob, corp_a_entropy = sample_from_logits_or_uniform(
             out["corp_a_logits"],
@@ -383,20 +366,7 @@ def sample_action(model, env, obs, device, random_action_prob=0.0):
         action["corp_a"] = corp_a
         used_masks["corp_a"] = corp_a_mask
 
-    if action_type_int == TRANSFER_STOCK:
-        stock_mask = make_stock_mask(env, action_type_int, device)
-        stock, stock_log_prob, stock_entropy = sample_from_logits_or_uniform(
-            out["stock_logits"],
-            stock_mask,
-            force_uniform,
-        )
-
-        log_prob = log_prob + stock_log_prob
-        entropy = entropy + stock_entropy
-        action["stock"] = stock
-        used_masks["stock"] = stock_mask
-
-    if action_type_int in {TRANSFER_CASH, ISSUE_STOCK}:
+    if action_type_int in {TRANSFER_CASH, CONTRIBUTE_FOR_STOCK}:
         corp_b_mask = make_corp_b_mask(
             env,
             action_type_int,
@@ -414,31 +384,35 @@ def sample_action(model, env, obs, device, random_action_prob=0.0):
         action["corp_b"] = corp_b
         used_masks["corp_b"] = corp_b_mask
 
-    if action_type_int == TRANSFER_STOCK:
-        corp_b_mask = make_corp_b_mask(
+    if action_type_int == CONTRIBUTE_FOR_STOCK:
+        stock_mask = make_stock_mask(
             env,
             action_type_int,
             device,
-            stock_idx=action["stock"].item(),
+            corp_a_idx=action["corp_a"].item(),
+            corp_b_idx=action["corp_b"].item(),
         )
-        corp_b, corp_b_log_prob, corp_b_entropy = sample_from_logits_or_uniform(
-            out["corp_b_logits"],
-            corp_b_mask,
+        stock, stock_log_prob, stock_entropy = sample_from_logits_or_uniform(
+            out["stock_logits"],
+            stock_mask,
             force_uniform,
         )
 
-        log_prob = log_prob + corp_b_log_prob
-        entropy = entropy + corp_b_entropy
-        action["corp_b"] = corp_b
-        used_masks["corp_b"] = corp_b_mask
+        log_prob = log_prob + stock_log_prob
+        entropy = entropy + stock_entropy
+        action["stock"] = stock
+        used_masks["stock"] = stock_mask
 
-    if action_type_int in {TRANSFER_CASH, TRANSFER_STOCK, ISSUE_STOCK}:
+    if action_type_int in {TRANSFER_CASH, CONTRIBUTE_FOR_STOCK}:
         corp_a_idx = None
         if action["corp_a"] is not None:
             corp_a_idx = action["corp_a"].item()
         corp_b_idx = None
         if action["corp_b"] is not None:
             corp_b_idx = action["corp_b"].item()
+        stock_idx = None
+        if action["stock"] is not None:
+            stock_idx = action["stock"].item()
 
         amount_mask = make_amount_mask(
             env,
@@ -446,6 +420,7 @@ def sample_action(model, env, obs, device, random_action_prob=0.0):
             device,
             corp_a_idx=corp_a_idx,
             corp_b_idx=corp_b_idx,
+            stock_idx=stock_idx,
         )
         amount, amount_log_prob, amount_entropy = sample_from_logits_or_uniform(
             out["amount_logits"],
@@ -501,17 +476,16 @@ def describe_env_action(env, env_action):
         amount = env.cash_amounts[amount_idx]
         return f"{action_name}(from={from_id}, to={to_id}, amount={amount})"
 
-    if action_type == TRANSFER_STOCK:
-        stock_id = env.idx_to_stock.get(stock_idx, f"idx_{stock_idx}")
-        to_id = env.idx_to_corporation.get(corp_b_idx, f"idx_{corp_b_idx}")
-        percent = env.stock_percents[amount_idx]
-        return f"{action_name}(stock={stock_id}, to={to_id}, percent={percent})"
-
-    if action_type == ISSUE_STOCK:
+    if action_type == CONTRIBUTE_FOR_STOCK:
         issuer_id = env.idx_to_corporation.get(corp_a_idx, f"idx_{corp_a_idx}")
-        recipient_id = env.idx_to_corporation.get(corp_b_idx, f"idx_{corp_b_idx}")
+        contributor_id = env.idx_to_corporation.get(corp_b_idx, f"idx_{corp_b_idx}")
+        stock_id = env.idx_to_stock.get(stock_idx, f"idx_{stock_idx}")
+        amount = env.cash_amounts[amount_idx]
         percent = env.stock_percents[amount_idx]
-        return f"{action_name}(issuer={issuer_id}, recipient={recipient_id}, percent={percent})"
+        return (
+            f"{action_name}(issuer={issuer_id}, contributor={contributor_id}, "
+            f"stock={stock_id}, cash={amount}, percent={percent})"
+        )
 
     return str(env_action)
 
@@ -551,7 +525,7 @@ def train():
     )
 
     embed_dim = 128
-    num_action_types = 4
+    num_action_types = 3
     max_amounts = max(len(env.cash_amounts), len(env.stock_percents))
 
     model = PolicyValueNet(
@@ -568,7 +542,6 @@ def train():
     total_updates = 1000
     rollout_steps = 256
     snapshot_dir = Path("barnes_group/rl_snapshots")
-    max_snapshots = 15
     saved_snapshot_count = 0
 
     for update in range(total_updates):
@@ -582,7 +555,7 @@ def train():
         success_count = 0
         random_exploration_count = 0
         entropy_total = 0.0
-        best_tax_advantage = 0.0
+        best_tax_advantage = float("-inf")
         best_snapshot = None
         current_episode_actions = []
 
@@ -616,11 +589,21 @@ def train():
             random_exploration_count += int(used_uniform)
             entropy_total += float(entropy.detach())
 
-            if info.get("tax_advantage", 0.0) > best_tax_advantage:
-                best_tax_advantage = info["tax_advantage"]
+            tax_advantage = info.get("tax_advantage", 0.0)
+            longer_equal_advantage_trace = (
+                best_snapshot is not None
+                and tax_advantage == best_tax_advantage
+                and len(current_episode_actions) > len(best_snapshot["actions"])
+            )
+            if (
+                best_snapshot is None
+                or tax_advantage > best_tax_advantage
+                or longer_equal_advantage_trace
+            ):
+                best_tax_advantage = tax_advantage
                 best_snapshot = {
                     "state": copy.deepcopy(env.state),
-                    "tax_advantage": info["tax_advantage"],
+                    "tax_advantage": tax_advantage,
                     "terminated": terminated,
                     "truncated": truncated,
                     "invalid_action": info.get("invalid_action", False),
@@ -653,9 +636,7 @@ def train():
 
         if (
             best_snapshot is not None
-            and best_snapshot["tax_advantage"] > 0.0
             and update % 25 == 0
-            and saved_snapshot_count < max_snapshots
         ):
             save_best_snapshot(
                 env=env,

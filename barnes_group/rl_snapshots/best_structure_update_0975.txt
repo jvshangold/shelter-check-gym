@@ -1,0 +1,12 @@
+update: 975
+snapshot_index: 39
+tax_advantage: 35.0
+terminated: True
+truncated: False
+invalid_action: False
+
+actions:
+1. make_subcorporation(parent=T)
+2. contribute_for_stock(issuer=DS_1, contributor=FSub, stock=fsub_own_stock, cash=100.0, percent=80.0)
+3. make_subcorporation(parent=DS_1)
+4. transfer_cash(from=DS_1, to=T, amount=100.0)

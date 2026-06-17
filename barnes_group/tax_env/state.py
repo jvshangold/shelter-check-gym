@@ -36,6 +36,7 @@ class Cash:
     amount: float
     basis: float
     contributed_by_id: str | None = None
+    exchanged_for_stock_id: str | None = None
 
 
 @dataclass
@@ -46,6 +47,7 @@ class Stock:
     percent: float
     basis: float
     contributed_by_id: str | None = None
+    exchanged_for_stock_id: str | None = None
 
     @property
     def is_own_stock(self) -> bool:
@@ -223,13 +225,13 @@ class WorldState:
 
         return new_stock_id
 
-    def issue_stock(self, issuer_id: str, recipient_id: str, percent: float) -> str:
+    def exchange_for_stock(self, issuer_id: str, recipient_id: str, percent: float) -> str:
         self._require_corporation(issuer_id)
         self._require_corporation(recipient_id)
         if percent <= 0 or percent > 100:
             raise ValueError("Issued stock percent must be between 0 and 100")
-        if not self.has_contributed_property(issuer_id, recipient_id):
-            raise ValueError("Stock issuance requires property contributed by recipient")
+        if not self.has_unexchanged_contributed_property(issuer_id, recipient_id):
+            raise ValueError("Stock exchange requires unexchanged property contributed by recipient")
 
         existing_total = self.total_issued_percent(issuer_id)
         if existing_total > 0:
@@ -250,7 +252,50 @@ class WorldState:
             percent=percent,
             basis=basis,
         )
+        self._mark_contributed_property_exchanged(
+            issuer_id=issuer_id,
+            contributor_id=recipient_id,
+            stock_id=stock_id,
+        )
         return stock_id
+
+    def contribute_for_stock(
+        self,
+        issuer_id: str,
+        contributor_id: str,
+        cash_amount: float,
+        contributed_stock_id: str,
+        contributed_stock_percent: float,
+        issued_stock_percent: float,
+    ) -> str:
+        self._require_corporation(issuer_id)
+        self._require_corporation(contributor_id)
+        if contributed_stock_id not in self.stock:
+            raise ValueError(f"Unknown stock: {contributed_stock_id}")
+
+        contributed_stock = self.stock[contributed_stock_id]
+        if contributed_stock.holder_id != contributor_id:
+            raise ValueError("Contributor must own contributed stock")
+        if contributed_stock.issuer_id != contributor_id:
+            raise ValueError("Contributor must contribute its own stock")
+        if cash_amount <= 0:
+            raise ValueError("Cash contribution must be positive")
+
+        self.transfer_stock(
+            stock_id=contributed_stock_id,
+            to_id=issuer_id,
+            percent=min(contributed_stock.percent, contributed_stock_percent),
+        )
+        self.transfer_cash(
+            from_id=contributor_id,
+            to_id=issuer_id,
+            amount=cash_amount,
+        )
+        return self.exchange_for_stock(
+            issuer_id=issuer_id,
+            recipient_id=contributor_id,
+            percent=issued_stock_percent,
+        )
 
     def record_direct_repatriation(self, amount: float) -> None:
         self.ledger.direct_repatriated_cash += amount
@@ -318,25 +363,29 @@ class WorldState:
         contributed_cash = any(
             cash.owner_id == issuer_id
             and cash.contributed_by_id == recipient_id
+            and cash.exchanged_for_stock_id is None
             for cash in self.cash.values()
         )
         contributed_own_stock = any(
             stock.holder_id == issuer_id
             and stock.issuer_id == recipient_id
             and stock.contributed_by_id == recipient_id
+            and stock.exchanged_for_stock_id is None
             for stock in self.stock.values()
         )
 
         return contributed_cash and contributed_own_stock
 
-    def has_contributed_property(self, issuer_id: str, contributor_id: str) -> bool:
+    def has_unexchanged_contributed_property(self, issuer_id: str, contributor_id: str) -> bool:
         return any(
             cash.owner_id == issuer_id
             and cash.contributed_by_id == contributor_id
+            and cash.exchanged_for_stock_id is None
             for cash in self.cash.values()
         ) or any(
             stock.holder_id == issuer_id
             and stock.contributed_by_id == contributor_id
+            and stock.exchanged_for_stock_id is None
             for stock in self.stock.values()
         )
 
@@ -379,12 +428,43 @@ class WorldState:
 
         property_basis = 0.0
         for cash in self.cash.values():
-            if cash.owner_id == issuer_id and cash.contributed_by_id == recipient_id:
+            if (
+                cash.owner_id == issuer_id
+                and cash.contributed_by_id == recipient_id
+                and cash.exchanged_for_stock_id is None
+            ):
                 property_basis += cash.basis
         for stock in self.stock.values():
-            if stock.holder_id == issuer_id and stock.contributed_by_id == recipient_id:
+            if (
+                stock.holder_id == issuer_id
+                and stock.contributed_by_id == recipient_id
+                and stock.exchanged_for_stock_id is None
+            ):
                 property_basis += stock.basis
         return property_basis
+
+    def _mark_contributed_property_exchanged(
+        self,
+        issuer_id: str,
+        contributor_id: str,
+        stock_id: str,
+    ) -> None:
+        for cash in self.cash.values():
+            if (
+                cash.owner_id == issuer_id
+                and cash.contributed_by_id == contributor_id
+                and cash.exchanged_for_stock_id is None
+            ):
+                cash.exchanged_for_stock_id = stock_id
+
+        for stock in self.stock.values():
+            if (
+                stock.id != stock_id
+                and stock.holder_id == issuer_id
+                and stock.contributed_by_id == contributor_id
+                and stock.exchanged_for_stock_id is None
+            ):
+                stock.exchanged_for_stock_id = stock_id
 
     def _find_cash_lot(self, owner_id: str, amount: float) -> Cash:
         for cash in self.cash.values():

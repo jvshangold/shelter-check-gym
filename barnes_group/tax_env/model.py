@@ -11,22 +11,15 @@ class GNN(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels):
         super().__init__()
 
-        self.corporation_linear = nn.Linear(5, hidden_channels)
-        self.cash_linear = nn.Linear(2, hidden_channels)
-        self.stock_linear = nn.Linear(4, hidden_channels)
+        self.corporation_linear = nn.Linear(8, hidden_channels)
+        self.cash_linear = nn.Linear(7, hidden_channels)
+        self.stock_linear = nn.Linear(11, hidden_channels)
 
         edge_types = {
-            ("corporation", "has_subsidiary", "corporation"): SAGEConv((-1, -1), hidden_channels),
             ("corporation", "owns_cash", "cash"): SAGEConv((-1, -1), hidden_channels),
             ("cash", "owned_by", "corporation"): SAGEConv((-1, -1), hidden_channels),
             ("corporation", "holds_stock", "stock"): SAGEConv((-1, -1), hidden_channels),
             ("stock", "held_by", "corporation"): SAGEConv((-1, -1), hidden_channels),
-            ("corporation", "issues_stock", "stock"): SAGEConv((-1, -1), hidden_channels),
-            ("stock", "issued_by", "corporation"): SAGEConv((-1, -1), hidden_channels),
-            ("corporation", "contributed_cash", "cash"): SAGEConv((-1, -1), hidden_channels),
-            ("cash", "cash_contributed_by", "corporation"): SAGEConv((-1, -1), hidden_channels),
-            ("corporation", "contributed_stock", "stock"): SAGEConv((-1, -1), hidden_channels),
-            ("stock", "stock_contributed_by", "corporation"): SAGEConv((-1, -1), hidden_channels),
         }
 
         self.conv1 = HeteroConv(edge_types, aggr="sum")
