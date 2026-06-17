@@ -1,0 +1,94 @@
+> Module PartnershipDisguisedSaleTaxModel
+
+```catala
+declaration structure PartnershipDisguisedSaleInput:
+  data asset_basis content money
+  data asset_fair_market_value content money
+  data cash_distributed_to_transferor content money
+  data debt_financed_distribution content money
+  data transferor_allocable_liability content money
+  data tax_rate content decimal
+
+declaration scope PartnershipDisguisedSaleComputation:
+  input transaction content PartnershipDisguisedSaleInput
+
+  internal baseline_gain content money
+  internal liability_excluded_distribution content money
+  internal amount_taken_into_account content money
+  internal recognized_gain content money
+  internal deferred_gain content money
+  internal baseline_tax_due content money
+  internal actual_tax_due content money
+
+  output tax_savings content money
+  output recognized_gain_output content money
+  output baseline_gain_output content money
+  output deferred_gain_output content money
+```
+
+```catala
+scope PartnershipDisguisedSaleComputation:
+  definition baseline_gain equals
+    if transaction.asset_fair_market_value <= transaction.asset_basis then
+      $0
+    else
+      transaction.asset_fair_market_value - transaction.asset_basis
+
+  definition liability_excluded_distribution equals
+    if transaction.debt_financed_distribution <= transaction.transferor_allocable_liability then
+      transaction.debt_financed_distribution
+    else
+      transaction.transferor_allocable_liability
+
+  definition amount_taken_into_account equals
+    if transaction.cash_distributed_to_transferor <= liability_excluded_distribution then
+      $0
+    else
+      transaction.cash_distributed_to_transferor - liability_excluded_distribution
+
+  definition recognized_gain equals
+    if amount_taken_into_account <= transaction.asset_basis then
+      $0
+    else
+      amount_taken_into_account - transaction.asset_basis
+
+  definition deferred_gain equals
+    if baseline_gain <= recognized_gain then
+      $0
+    else
+      baseline_gain - recognized_gain
+
+  definition baseline_tax_due equals
+    baseline_gain * transaction.tax_rate
+
+  definition actual_tax_due equals
+    recognized_gain * transaction.tax_rate
+
+  definition tax_savings equals
+    baseline_tax_due - actual_tax_due
+
+  definition recognized_gain_output equals recognized_gain
+
+  definition baseline_gain_output equals baseline_gain
+
+  definition deferred_gain_output equals deferred_gain
+```
+
+```catala
+declaration scope TestTribunePattern:
+  output computation content PartnershipDisguisedSaleComputation
+
+scope TestTribunePattern:
+  definition computation equals
+    output of PartnershipDisguisedSaleComputation with {
+      -- transaction:
+        PartnershipDisguisedSaleInput {
+          -- asset_basis: $0
+          -- asset_fair_market_value: $100
+          -- cash_distributed_to_transferor: $100
+          -- debt_financed_distribution: $90
+          -- transferor_allocable_liability: $90
+          -- tax_rate: 20%
+        }
+    }
+```

@@ -1,0 +1,9 @@
+[project]
+include_dirs = ["formalizations/"]
+build_dir = "formalizations/_build"
+target_dir = "formalizations/_target"
+
+[[target]]
+name = "partnership_disguised_sale_tax_rules"
+modules = ["PartnershipDisguisedSaleTaxModel"]
+backends = ["python"]
