@@ -11,7 +11,7 @@ class GNN(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels):
         super().__init__()
 
-        self.individual_linear = nn.Linear(4, hidden_channels)
+        self.individual_linear = nn.Linear(5, hidden_channels)
         self.partnership_linear = nn.Linear(3, hidden_channels)
         self.asset_linear = nn.Linear(5, hidden_channels)
         self.cash_linear = nn.Linear(6, hidden_channels)

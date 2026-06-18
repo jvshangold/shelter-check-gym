@@ -47,6 +47,7 @@ def build_graph(state: WorldState) -> HeteroData:
             individual.tax_rate,
             scaled_money(state.individual_cash(individual_id)),
             scaled_money(state.cash_distributed_to(individual_id)),
+            scaled_money(state.capital_account(state.partnership_id, individual_id)),
         ])
 
     for partnership_id in partnership_ids:
@@ -107,7 +108,7 @@ def build_graph(state: WorldState) -> HeteroData:
         borrower_of.append([partnership_index[loan.borrower_partnership_id], loan_i])
         guarantees.append([individual_index[loan.guarantor_id], loan_i])
 
-    data["individual"].x = node_features(individual_x, 4)
+    data["individual"].x = node_features(individual_x, 5)
     data["partnership"].x = node_features(partnership_x, 3)
     data["asset"].x = node_features(asset_x, 5)
     data["cash"].x = node_features(cash_x, 6)

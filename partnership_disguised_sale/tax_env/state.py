@@ -26,6 +26,7 @@ class Individual:
 class Partnership:
     id: str
     partner_ids: set[str] = field(default_factory=set)
+    capital_accounts: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -93,7 +94,14 @@ class WorldState:
         unknown = partner_ids - set(self.individuals)
         if unknown:
             raise ValueError(f"Unknown partners: {sorted(unknown)}")
-        self.partnerships[partnership_id] = Partnership(partnership_id, set(partner_ids))
+        self.partnerships[partnership_id] = Partnership(
+            id=partnership_id,
+            partner_ids=set(partner_ids),
+            capital_accounts={
+                partner_id: 0.0
+                for partner_id in partner_ids
+            },
+        )
 
     def add_asset(
         self,
@@ -163,6 +171,7 @@ class WorldState:
         asset.owner_id = partnership_id
         asset.contributed_by_id = partner_id
         asset.contributed_to_partnership_id = partnership_id
+        partnership.capital_accounts[partner_id] += asset.fair_market_value
 
     def contribute_cash(
         self,
@@ -176,6 +185,7 @@ class WorldState:
         if partner_id not in partnership.partner_ids:
             raise ValueError(f"{partner_id} is not a partner in {partnership_id}")
         self._spend_individual_cash(partner_id, amount)
+        partnership.capital_accounts[partner_id] += amount
         self.add_cash_lot(
             amount=amount,
             owner_type=OwnerType.PARTNERSHIP,
@@ -229,6 +239,7 @@ class WorldState:
         if self.partnership_cash(partnership_id) < amount:
             raise ValueError("Partnership does not have enough cash")
 
+        partnership.capital_accounts[recipient_id] -= amount
         remaining = amount
         for cash in list(self.cash_lots.values()):
             if remaining <= 0.0:
@@ -291,6 +302,47 @@ class WorldState:
             if loan.guarantor_id == individual_id
         )
 
+    def capital_account(self, partnership_id: str, partner_id: str) -> float:
+        partnership = self._get_partnership(partnership_id)
+        if partner_id not in partnership.partner_ids:
+            raise ValueError(f"{partner_id} is not a partner in {partnership_id}")
+        return partnership.capital_accounts.get(partner_id, 0.0)
+
+    def non_transferor_positive_capital(
+        self,
+        partnership_id: str,
+        transferor_id: str,
+    ) -> float:
+        partnership = self._get_partnership(partnership_id)
+        return sum(
+            max(0.0, capital)
+            for partner_id, capital in partnership.capital_accounts.items()
+            if partner_id != transferor_id
+        )
+
+    def has_non_transferor_economic_interest(
+        self,
+        partnership_id: str,
+        transferor_id: str,
+    ) -> bool:
+        return self.non_transferor_positive_capital(
+            partnership_id=partnership_id,
+            transferor_id=transferor_id,
+        ) > 0.0
+
+    def has_completed_economic_sale_to_partnership(self, transferor_id: str) -> bool:
+        asset = self.contributed_asset_by(transferor_id)
+        if asset is None:
+            return False
+
+        return (
+            self.cash_distributed_to(transferor_id) >= asset.fair_market_value
+            and self.has_non_transferor_economic_interest(
+                partnership_id=asset.contributed_to_partnership_id,
+                transferor_id=transferor_id,
+            )
+        )
+
     def contributed_asset_by(self, individual_id: str) -> Asset | None:
         for asset in self.assets.values():
             if (
@@ -302,7 +354,9 @@ class WorldState:
 
     def taxpayer_tax_input(self) -> dict[str, float]:
         asset = self.contributed_asset_by(self.taxpayer_id)
-        if asset is None:
+        cash_distributed = self.cash_distributed_to(self.taxpayer_id)
+
+        if asset is None or cash_distributed <= 0.0:
             asset_basis = 0.0
             asset_fmv = 0.0
         else:
@@ -312,7 +366,7 @@ class WorldState:
         return {
             "asset_basis": asset_basis,
             "asset_fair_market_value": asset_fmv,
-            "cash_distributed_to_transferor": self.cash_distributed_to(self.taxpayer_id),
+            "cash_distributed_to_transferor": cash_distributed,
             "debt_financed_distribution": self.debt_financed_distribution_to(
                 self.taxpayer_id
             ),

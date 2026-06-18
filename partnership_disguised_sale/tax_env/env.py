@@ -1,5 +1,6 @@
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict
 
 import gymnasium as gym
@@ -7,13 +8,21 @@ from gymnasium import Space, spaces
 from graphviz import Digraph
 
 from .render import build_graph
-from .state import CashSource, OwnerType, WorldState
+from .state import OwnerType, WorldState
 
-sys.path.append(
-    "partnership_disguised_sale/formalizations/_target/"
-    "partnership_disguised_sale_tax_rules"
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+CATALA_TARGET_ROOT = (
+    PACKAGE_ROOT
+    / "formalizations"
+    / "_target"
+    / "partnership_disguised_sale_tax_rules"
 )
-sys.path.append("partnership_disguised_sale/formalizations/_build/libcatala/python")
+CATALA_TARGET_PYTHON = CATALA_TARGET_ROOT / "python"
+
+for path in (CATALA_TARGET_ROOT, CATALA_TARGET_PYTHON):
+    path_text = str(path)
+    if path_text not in sys.path:
+        sys.path.append(path_text)
 
 try:
     from python import PartnershipDisguisedSaleTaxModel as TaxModel
@@ -135,6 +144,17 @@ class TaxEnv(gym.Env):
             "invalid_action": invalid_action,
             "tax_advantage": current_tax_advantage,
             "tax_computation": self.compute_tax(),
+            "economic_sale_complete": (
+                self.state.has_completed_economic_sale_to_partnership(
+                    self.state.taxpayer_id
+                )
+            ),
+            "non_transferor_positive_capital": (
+                self.state.non_transferor_positive_capital(
+                    partnership_id=self.state.partnership_id,
+                    transferor_id=self.state.taxpayer_id,
+                )
+            ),
         }
         return obs, reward, terminated, truncated, info
 
@@ -153,6 +173,11 @@ class TaxEnv(gym.Env):
         return self.render_world()
 
     def compute_tax_advantage(self) -> float:
+        if not self.state.has_completed_economic_sale_to_partnership(
+            self.state.taxpayer_id
+        ):
+            return 0.0
+
         return self.compute_tax().tax_savings
 
     def compute_tax(self) -> TaxComputation:
@@ -176,6 +201,10 @@ class TaxEnv(gym.Env):
         return (
             self.state.cash_distributed_to(self.state.taxpayer_id) >= 100.0
             and self.state.contributed_asset_by(self.state.taxpayer_id) is not None
+            and self.state.has_non_transferor_economic_interest(
+                partnership_id=self.state.partnership_id,
+                transferor_id=self.state.taxpayer_id,
+            )
             and tax.recognized_gain <= 10.0
             and tax.deferred_gain >= 90.0
         )
@@ -187,6 +216,7 @@ class TaxEnv(gym.Env):
             label = (
                 f"{individual_id}\\nindividual\\n"
                 f"cash: {self.state.individual_cash(individual_id)}\\n"
+                f"capital: {self.state.capital_account(self.state.partnership_id, individual_id)}\\n"
                 f"rate: {individual.tax_rate}"
             )
             fillcolor = "lightblue" if individual_id == self.state.taxpayer_id else "white"
