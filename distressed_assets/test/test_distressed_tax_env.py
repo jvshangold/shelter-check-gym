@@ -168,7 +168,7 @@ def test_env_reset():
 
     assert info == {}
     assert env.steps == 0
-    assert env.prev_savings == 0.0
+    assert env.prev_tax_advantage == 0.0
     assert obs is not None
 
 
@@ -209,6 +209,34 @@ def test_env_move_asset_sell_and_vesting_power():
     assert asset.is_sold
     assert trust.section_678_power_holder_id == "T"
     assert env.compute_savings() > 0.0
+    assert env.compute_tax_advantage() > 0.0
+
+
+def test_broad_savings_without_gated_structure_is_not_rewarded():
+    env = TaxEnv()
+    env.reset()
+
+    env.state.add_individual("FP_0", TaxResidence.FOREIGN)
+    env.state.add_asset(
+        asset_id="distressed_asset_0",
+        kind=AssetKind.PROPERTY,
+        basis=100.0,
+        fair_market_value=20.0,
+        owner_type=OwnerType.INDIVIDUAL,
+        owner_id="FP_0",
+    )
+    env._refresh_indices()
+
+    env.step([0, 0, 0, 0])  # make direct subtrust
+    env.step([0, 1, 0, 0])  # make nested subtrust
+    env.step([1, 2, 1, 0])  # move asset into nested subtrust
+    env.step([3, 2, 0, 0])  # give vesting power to T
+    _, reward, terminated, _, info = env.step([2, 0, 1, 0])  # sell asset
+
+    assert info["raw_tax_savings"] > 0.0
+    assert info["tax_advantage"] == 0.0
+    assert reward <= 0.0
+    assert not terminated
 
 
 def test_env_rejects_moving_cash_asset():

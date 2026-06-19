@@ -1,3 +1,6 @@
+import copy
+from pathlib import Path
+
 import torch
 
 from distressed_assets.tax_env.env import (
@@ -285,6 +288,29 @@ def has_valid_action(env, device) -> bool:
     return bool(make_action_mask(env, device).any().item())
 
 
+def save_success_snapshot(env, snapshot, output_dir, update, snapshot_count):
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    image_stem = output_dir / f"success_structure_update_{update:04d}"
+    old_state = env.state
+
+    try:
+        env.state = snapshot["state"]
+        env.render_world(filename=str(image_stem))
+    finally:
+        env.state = old_state
+
+    metadata_path = image_stem.with_suffix(".txt")
+    with metadata_path.open("w") as metadata:
+        metadata.write(f"update: {update}\n")
+        metadata.write(f"snapshot_index: {snapshot_count}\n")
+        metadata.write(f"tax_advantage: {snapshot['tax_advantage']}\n")
+        metadata.write(f"raw_tax_savings: {snapshot['raw_tax_savings']}\n")
+        metadata.write(f"terminated: {snapshot['terminated']}\n")
+        metadata.write(f"truncated: {snapshot['truncated']}\n")
+        metadata.write(f"invalid_action: {snapshot['invalid_action']}\n")
+
+
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -309,6 +335,7 @@ def train():
 
     total_updates = 1000
     rollout_steps = 256
+    snapshot_dir = Path("distressed_assets/rl_snapshots")
     max_success_images = 12
     saved_success_image_count = 0
 
@@ -349,7 +376,20 @@ def train():
                 and update % 25 == 0
                 and saved_success_image_count < max_success_images
             ):
-                env.render_world(filename=f"distressed_world_update_{update}")
+                save_success_snapshot(
+                    env=env,
+                    snapshot={
+                        "state": copy.deepcopy(env.state),
+                        "tax_advantage": info.get("tax_advantage", 0.0),
+                        "raw_tax_savings": info.get("raw_tax_savings", 0.0),
+                        "terminated": terminated,
+                        "truncated": truncated,
+                        "invalid_action": info.get("invalid_action", False),
+                    },
+                    output_dir=snapshot_dir,
+                    update=update,
+                    snapshot_count=saved_success_image_count,
+                )
                 saved_success_image = True
                 saved_success_image_count += 1
 

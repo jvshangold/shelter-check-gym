@@ -59,8 +59,7 @@ class TaxEnv(gym.Env):
         self.idx_to_asset: Dict[int, str] = {}
         self.idx_to_individual: Dict[int, str] = {}
 
-        self.prev_broad_savings = 0.0
-        self.prev_savings = 0.0
+        self.prev_tax_advantage = 0.0
         self.steps = 0
 
         self._refresh_indices()
@@ -93,19 +92,21 @@ class TaxEnv(gym.Env):
             print("Exception:", e)
             invalid_action = True
 
-        current_desired_savings = self.compute_desired_loophole_savings()
-        current_broad_savings = self.compute_savings()
-        broad_delta = current_broad_savings - self.prev_broad_savings
+        current_raw_savings = self.compute_raw_tax_savings()
+        current_tax_advantage = self.compute_tax_advantage()
 
-        reward = broad_delta - self.compute_complexity_penalty()
+        reward = (
+            current_tax_advantage
+            - self.prev_tax_advantage
+            - self.compute_complexity_penalty()
+        )
 
-        self.prev_broad_savings = current_broad_savings
-        self.prev_savings = current_broad_savings
+        self.prev_tax_advantage = current_tax_advantage
 
         if invalid_action:
             reward -= 1.0
 
-        if current_desired_savings > 0.0 and not invalid_action:
+        if current_tax_advantage > 0.0 and not invalid_action:
             terminated = True
 
         self.steps += 1
@@ -116,8 +117,10 @@ class TaxEnv(gym.Env):
         obs = self.get_observation()
         info = {
             "invalid_action": invalid_action,
-            "desired_savings": current_desired_savings,
-            "broad_savings": current_broad_savings,
+            "tax_advantage": current_tax_advantage,
+            "raw_tax_savings": current_raw_savings,
+            "desired_savings": current_tax_advantage,
+            "broad_savings": current_raw_savings,
         }
 
         return obs, reward, terminated, truncated, info
@@ -127,8 +130,7 @@ class TaxEnv(gym.Env):
 
         self.state = WorldState.initial_state()
         self.steps = 0
-        self.prev_broad_savings = 0.0
-        self.prev_savings = 0.0
+        self.prev_tax_advantage = 0.0
 
         random_foreign_party_prob = self.random_foreign_party_prob
         if options is not None and "random_foreign_party_prob" in options:
@@ -182,17 +184,19 @@ class TaxEnv(gym.Env):
             )
 
     def compute_reward(self):
-        current_broad_savings = self.compute_savings()
+        current_tax_advantage = self.compute_tax_advantage()
         reward = (
-            current_broad_savings
-            - self.prev_broad_savings
+            current_tax_advantage
+            - self.prev_tax_advantage
             - self.compute_complexity_penalty()
         )
-        self.prev_broad_savings = current_broad_savings
-        self.prev_savings = current_broad_savings
+        self.prev_tax_advantage = current_tax_advantage
         return reward
 
     def compute_savings(self) -> float:
+        return self.compute_raw_tax_savings()
+
+    def compute_raw_tax_savings(self) -> float:
         total = 0.0
 
         for asset in self.state.assets.values():
@@ -216,6 +220,9 @@ class TaxEnv(gym.Env):
             )
 
         return total
+
+    def compute_tax_advantage(self) -> float:
+        return self.compute_desired_loophole_savings()
 
     def has_desired_loophole_structure(self) -> bool:
         """
