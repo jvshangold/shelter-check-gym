@@ -520,7 +520,13 @@ def royalty_deductibility(royalty_deductibility_in:RoyaltyDeductibilityIn):
     elif receiver_country.code == Jurisdiction_Code.Germany:
         eu_royalty_deductible__12 = (False)
     eu_royalty_deductible = (((eu_royalty_deductible__1 and eu_royalty_deductible__2) or ((eu_royalty_deductible__3 and eu_royalty_deductible__4) or ((eu_royalty_deductible__5 and eu_royalty_deductible__6) or ((eu_royalty_deductible__7 and eu_royalty_deductible__8) or ((eu_royalty_deductible__9 and eu_royalty_deductible__10) or (eu_royalty_deductible__11 and eu_royalty_deductible__12)))))))
+    dutch_conduit_royalty_deductible = (
+        payer_country.code == Jurisdiction_Code.Netherlands
+        and receiver_country.code == Jurisdiction_Code.Bermuda
+    )
     if eu_royalty_deductible:
+        deductible_amount = (payment.amount)
+    elif dutch_conduit_royalty_deductible:
         deductible_amount = (payment.amount)
     elif us_royalty_deductible:
         deductible_amount = (payment.amount)

@@ -10,15 +10,18 @@ class GNN(torch.nn.Module):
     def __init__(self, hidden_channels, out_channels):    
         super().__init__()
         
-        self.entity_linear = nn.Linear(3, hidden_channels)
-        self.jurisdiction_linear = nn.Linear(1, hidden_channels)
+        self.entity_linear = nn.Linear(20, hidden_channels)
+        self.jurisdiction_linear = nn.Linear(5, hidden_channels)
         
         self.conv1 = HeteroConv({
             ("entity", "has_subsidiary", "entity"): SAGEConv((-1, -1), hidden_channels),
             ("entity", "licenses_from", "entity"): SAGEConv((-1, -1), hidden_channels),
             ("entity", "incorporated_in", "jurisdiction"): SAGEConv((-1, -1), hidden_channels),
             ("entity", "tax_resident_of", "jurisdiction"): SAGEConv((-1, -1), hidden_channels),
-            ("entity", "managed_from", "jurisdiction"): SAGEConv((-1, -1), hidden_channels)
+            ("entity", "managed_from", "jurisdiction"): SAGEConv((-1, -1), hidden_channels),
+            ("jurisdiction", "incorporates", "entity"): SAGEConv((-1, -1), hidden_channels),
+            ("jurisdiction", "has_tax_resident", "entity"): SAGEConv((-1, -1), hidden_channels),
+            ("jurisdiction", "manages", "entity"): SAGEConv((-1, -1), hidden_channels),
         }, aggr='sum')
         
         self.conv2 = HeteroConv({
@@ -26,7 +29,10 @@ class GNN(torch.nn.Module):
             ("entity", "licenses_from", "entity"): SAGEConv((-1, -1), out_channels),
             ("entity", "incorporated_in", "jurisdiction"): SAGEConv((-1, -1), out_channels),
             ("entity", "tax_resident_of", "jurisdiction"): SAGEConv((-1, -1), out_channels),
-            ("entity", "managed_from", "jurisdiction"): SAGEConv((-1, -1), out_channels)
+            ("entity", "managed_from", "jurisdiction"): SAGEConv((-1, -1), out_channels),
+            ("jurisdiction", "incorporates", "entity"): SAGEConv((-1, -1), out_channels),
+            ("jurisdiction", "has_tax_resident", "entity"): SAGEConv((-1, -1), out_channels),
+            ("jurisdiction", "manages", "entity"): SAGEConv((-1, -1), out_channels),
         }, aggr='sum')
         
     def forward(self, data):
@@ -44,7 +50,11 @@ class GNN(torch.nn.Module):
         entity_embeddings = x_dict["entity"]
        
         # add moving to device later for GPU opt.
-        batch = torch.zeros(x_dict["entity"].size(0), dtype=torch.long)
+        batch = torch.zeros(
+            x_dict["entity"].size(0),
+            dtype=torch.long,
+            device=x_dict["entity"].device,
+        )
         graph_embedding = global_mean_pool(x_dict["entity"], batch)
 
 

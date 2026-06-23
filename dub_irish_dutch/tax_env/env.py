@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import Space, spaces
 
 from typing import Dict, List
+from pathlib import Path
 
 from .state import WorldState
 from .render import build_graph
@@ -10,15 +11,27 @@ import sys
 
 from graphviz import Digraph
 
-sys.path.append("dub_irish_dutch/formalizations/_target/dutch_tax_rules")
-sys.path.append("dub_irish_dutch/formalizations/_build/libcatala/python")
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+CATALA_TARGET_ROOT = PACKAGE_ROOT / "formalizations" / "_target" / "dutch_tax_rules"
+CATALA_TARGET_PYTHON = CATALA_TARGET_ROOT / "python"
+
+for path in (CATALA_TARGET_ROOT, CATALA_TARGET_PYTHON):
+    path_text = str(path)
+    if path_text not in sys.path:
+        sys.path.append(path_text)
 
 from python import TaxModel
 from python import catala_runtime
 
 
 class TaxEnv(gym.Env):
-    def __init__(self, MAX_ENTITIES=10, JURISDICTIONS=5):
+    def __init__(
+        self,
+        MAX_ENTITIES=4,
+        JURISDICTIONS=5,
+        MAX_STEPS=10,
+        START_WITH_BERMUDA_HOLDING=True,
+    ):
         super().__init__()
 
         self.observation_space: Space = spaces.Dict({})
@@ -51,8 +64,9 @@ class TaxEnv(gym.Env):
 
         self.state = None
 
-        self.max_steps = 20
+        self.max_steps = MAX_STEPS
         self.max_entities = MAX_ENTITIES
+        self.start_with_bermuda_holding = START_WITH_BERMUDA_HOLDING
 
         self.idx_to_entity: Dict[int, str] = {}
         self.idx_to_jurisdiction: Dict[int, str] = {
@@ -68,11 +82,14 @@ class TaxEnv(gym.Env):
             1: "Operating",
         }
 
-        self.prev_profit = catala_runtime.Money(catala_runtime.Integer(0))
+        self.prev_normalized_tax_advantage = 0.0
+        self.prev_normalized_raw_tax_advantage = 0.0
+        self.raw_tax_advantage_reward_weight = 0.25
         self.steps = 0
 
     def step(self, action):
         action_type, arg_1, arg_2, arg_3, arg_4, arg_5 = action
+        invalid_action = False
 
         try:
             if action_type == 0:
@@ -104,8 +121,8 @@ class TaxEnv(gym.Env):
                 licensee_id = self.idx_to_entity[arg_1]
                 licensor_id = self.idx_to_entity[arg_2]
 
-                if licensor_id == licensee_id:
-                    raise ValueError("A company cannot license IP from itself.")
+                if not self.is_valid_rent_pair(licensee_id, licensor_id):
+                    raise ValueError("Invalid IP license pair.")
 
                 self.state.rent_ip(licensee_id, licensor_id)
 
@@ -120,45 +137,59 @@ class TaxEnv(gym.Env):
             else:
                 raise ValueError("Unknown action type")
 
-            reward = self.compute_reward()
-
-            # penalize unrealistic tax structures
-            for entity in self.state.entities.values():
-                if entity.tax_residence != entity.incorporation_jurisdiction:
-                    reward -= 0.01
-
-            current_profit = self.compute_profit()
-            baseline_profit = self.compute_baseline_profit()
-
-            current_profit_float = self.money_to_float(current_profit)
-
-            terminated = False
-
-            if (
-                current_profit_float > baseline_profit * 1.03
-                and len(self.state.entities) >= 3
-                and len(self.state.licenses) >= 1
-            ):
-                reward += 0.5
-                if self.state.has_irish_sandwich():
-                    self.render_world()
-                    terminated = True
-
-            if action_type == 2:
-                reward -= 0.02
-
-            truncated = False
-
         except Exception as e:
             print("Action:", action)
             print("Exception:", e)
+            invalid_action = True
 
-            reward = -1.0
-            terminated = False
-            truncated = False
+        current_profit = self.money_to_float(self.compute_profit())
+        baseline_profit = self.compute_baseline_profit()
+        raw_tax_advantage = self.compute_raw_tax_advantage(
+            current_profit=current_profit,
+            baseline_profit=baseline_profit,
+        )
+        tax_advantage = self.compute_tax_advantage(
+            current_profit=current_profit,
+            baseline_profit=baseline_profit,
+            raw_tax_advantage=raw_tax_advantage,
+        )
+        normalized_tax_advantage = self.normalize_tax_advantage(tax_advantage)
+        normalized_raw_tax_advantage = self.normalize_tax_advantage(raw_tax_advantage)
+
+        reward = (
+            normalized_tax_advantage
+            - self.prev_normalized_tax_advantage
+            + self.raw_tax_advantage_reward_weight
+            * (
+                normalized_raw_tax_advantage
+                - self.prev_normalized_raw_tax_advantage
+            )
+            - self.compute_complexity_penalty()
+        )
+        self.prev_normalized_tax_advantage = normalized_tax_advantage
+        self.prev_normalized_raw_tax_advantage = normalized_raw_tax_advantage
+
+        if invalid_action:
+            reward -= 1.0
+
+        terminated = tax_advantage > 0.0 and not invalid_action
+        truncated = False
 
         obs = self.get_observation()
-        info = {}
+        info = {
+            "invalid_action": invalid_action,
+            "tax_advantage": tax_advantage,
+            "raw_tax_advantage": raw_tax_advantage,
+            "normalized_tax_advantage": normalized_tax_advantage,
+            "normalized_raw_tax_advantage": normalized_raw_tax_advantage,
+            "current_profit": current_profit,
+            "baseline_profit": baseline_profit,
+            "loophole_gate_complete": self.has_completed_loophole_structure(
+                current_profit=current_profit,
+                baseline_profit=baseline_profit,
+                raw_tax_advantage=raw_tax_advantage,
+            ),
+        }
 
         self.steps += 1
 
@@ -172,7 +203,8 @@ class TaxEnv(gym.Env):
 
         self.state = WorldState()
         self.steps = 0
-        self.prev_profit = catala_runtime.Money(catala_runtime.Integer(0))
+        self.prev_normalized_tax_advantage = 0.0
+        self.prev_normalized_raw_tax_advantage = 0.0
         self.idx_to_entity = {}
 
         # add US root
@@ -192,6 +224,16 @@ class TaxEnv(gym.Env):
         )
 
         self.idx_to_entity[0] = "root"
+
+        if self.start_with_bermuda_holding:
+            bermuda = self.state.add_child(
+                parent="root",
+                incorporation_jurisdiction="Bermuda",
+                management_jurisdiction="Bermuda",
+                tax_residence="Bermuda",
+                company_type="Holding",
+            )
+            self.idx_to_entity[1] = bermuda
 
         return self.get_observation(), {}
 
@@ -271,12 +313,124 @@ class TaxEnv(gym.Env):
         return float(money.value.value)
 
     def compute_reward(self):
-        current_profit = self.compute_profit()
-        reward = current_profit - self.prev_profit
-        self.prev_profit = current_profit
+        tax_advantage = self.compute_tax_advantage()
+        raw_tax_advantage = self.compute_raw_tax_advantage()
+        normalized_tax_advantage = self.normalize_tax_advantage(tax_advantage)
+        normalized_raw_tax_advantage = self.normalize_tax_advantage(raw_tax_advantage)
+        reward = (
+            normalized_tax_advantage
+            - self.prev_normalized_tax_advantage
+            + self.raw_tax_advantage_reward_weight
+            * (
+                normalized_raw_tax_advantage
+                - self.prev_normalized_raw_tax_advantage
+            )
+            - self.compute_complexity_penalty()
+        )
+        self.prev_normalized_tax_advantage = normalized_tax_advantage
+        self.prev_normalized_raw_tax_advantage = normalized_raw_tax_advantage
+        return reward
 
-        # divide by large number to make reward more stable
-        return self.money_to_float(reward) / 1e10
+    def compute_complexity_penalty(self):
+        penalty = 0.0
+
+        for entity in self.state.entities.values():
+            if entity.tax_residence != entity.incorporation_jurisdiction:
+                penalty += 0.01
+
+        return penalty
+
+    def normalize_tax_advantage(self, tax_advantage: float) -> float:
+        baseline_profit = self.compute_baseline_profit()
+        if baseline_profit <= 0.0:
+            return tax_advantage
+
+        return tax_advantage / baseline_profit
+
+    def compute_raw_tax_advantage(
+        self,
+        current_profit: float | None = None,
+        baseline_profit: float | None = None,
+    ) -> float:
+        if current_profit is None:
+            current_profit = self.money_to_float(self.compute_profit())
+        if baseline_profit is None:
+            baseline_profit = self.compute_baseline_profit()
+
+        return max(0.0, current_profit - baseline_profit)
+
+    def compute_tax_advantage(
+        self,
+        current_profit: float | None = None,
+        baseline_profit: float | None = None,
+        raw_tax_advantage: float | None = None,
+    ) -> float:
+        if current_profit is None:
+            current_profit = self.money_to_float(self.compute_profit())
+        if baseline_profit is None:
+            baseline_profit = self.compute_baseline_profit()
+        if raw_tax_advantage is None:
+            raw_tax_advantage = self.compute_raw_tax_advantage(
+                current_profit=current_profit,
+                baseline_profit=baseline_profit,
+            )
+
+        if not self.has_completed_loophole_structure(
+            current_profit=current_profit,
+            baseline_profit=baseline_profit,
+            raw_tax_advantage=raw_tax_advantage,
+        ):
+            return 0.0
+
+        return raw_tax_advantage
+
+    def has_completed_loophole_structure(
+        self,
+        current_profit: float | None = None,
+        baseline_profit: float | None = None,
+        raw_tax_advantage: float | None = None,
+    ) -> bool:
+        if current_profit is None:
+            current_profit = self.money_to_float(self.compute_profit())
+        if baseline_profit is None:
+            baseline_profit = self.compute_baseline_profit()
+        if raw_tax_advantage is None:
+            raw_tax_advantage = self.compute_raw_tax_advantage(
+                current_profit=current_profit,
+                baseline_profit=baseline_profit,
+            )
+
+        return (
+            raw_tax_advantage > baseline_profit * 0.03
+            and len(self.state.entities) >= 3
+            and self.has_completed_royalty_chain()
+        )
+
+    def has_completed_royalty_chain(self) -> bool:
+        for start_id, start_entity in self.state.entities.items():
+            if start_entity.company_type != "Operating":
+                continue
+
+            cur_id = start_id
+            visited = set()
+            chain_length = 0
+
+            while cur_id in self.state.licenses:
+                if cur_id in visited:
+                    break
+
+                visited.add(cur_id)
+                cur_id = self.state.licenses[cur_id]
+                chain_length += 1
+
+                if (
+                    chain_length >= 2
+                    and cur_id == self.state.ip_owner
+                    and self.state.entities[cur_id].company_type == "Holding"
+                ):
+                    return True
+
+        return False
 
     def compute_baseline_profit(self):
         baseline_profit = 0.0
@@ -308,8 +462,13 @@ class TaxEnv(gym.Env):
         payment_dict: Dict[str, List[TaxModel.Payment]] = {
             entity_id: [] for entity_id in self.state.entities
         }
+        taxable_gross_revenue: Dict[str, float] = {}
 
         total_revenue = 0
+        for entity_id in self.state.entities:
+            revenue = self.state.get_company_revenue(entity_id)
+            taxable_gross_revenue[entity_id] = revenue
+            total_revenue += round(revenue)
 
         for entity_id, entity in self.state.entities.items():
             payer_catala_entity = self.make_entity(
@@ -318,7 +477,6 @@ class TaxEnv(gym.Env):
             )
 
             revenue = self.state.get_company_revenue(entity_id)
-            total_revenue += round(revenue)
 
             if entity_id in self.state.licenses:
                 prev_id = entity_id
@@ -342,6 +500,7 @@ class TaxEnv(gym.Env):
                     )
 
                     payment_dict[prev_id].append(payment)
+                    taxable_gross_revenue[cur_licensor_id] += cur_payment
 
                     if cur_licensor_id not in self.state.licenses:
                         break
@@ -357,7 +516,7 @@ class TaxEnv(gym.Env):
                 entity.tax_residence,
             )
 
-            revenue = self.state.get_company_revenue(entity_id)
+            revenue = taxable_gross_revenue[entity_id]
 
             entity_inputs.append(
                 TaxModel.EntityTaxInput(

@@ -3,6 +3,14 @@ import torch
 
 from .state import WorldState
 
+
+REVENUE_SCALE = 1_000_000_000.0
+
+
+def one_hot(index: int, width: int) -> list[float]:
+    return [1.0 if i == index else 0.0 for i in range(width)]
+
+
 def build_graph(state: WorldState):
     '''
     method meant to take in WorldState and translate it to a 'HeteroData'
@@ -12,11 +20,13 @@ def build_graph(state: WorldState):
     # instantiate graph that will represent state
     data = HeteroData()
 
-    jurisdiction_vocab = {"Ireland": 0,
-                          "Netherlands": 1,
-                          "Bermuda": 2,
-                          "US": 3,
-                          "Germany": 4}
+    jurisdiction_vocab = {
+        "Ireland": 0,
+        "Netherlands": 1,
+        "Bermuda": 2,
+        "US": 3,
+        "Germany": 4,
+    }
     
     entity_ids = list(state.entities.keys())
 
@@ -34,13 +44,24 @@ def build_graph(state: WorldState):
         ent = state.entities[eid]
         entity_i = entity_index[eid] # cur entity idx so we don't retrieve multiple times
 
-        # node feature matrix
-        revenue = state.get_company_revenue(eid)
+        revenue = state.get_company_revenue(eid) / REVENUE_SCALE
 
         # is_holding, is_operating one_hot
         is_holding = 1.0 if ent.company_type == "Holding" else 0.0
         is_operating = 1.0 if ent.company_type == "Operating" else 0.0
-        entity_x.append([revenue, is_holding, is_operating])
+        is_ip_owner = 1.0 if eid == state.ip_owner else 0.0
+        has_license = 1.0 if eid in state.licenses else 0.0
+
+        entity_x.append([
+            revenue,
+            is_holding,
+            is_operating,
+            is_ip_owner,
+            has_license,
+            *one_hot(jurisdiction_vocab[ent.incorporation_jurisdiction], 5),
+            *one_hot(jurisdiction_vocab[ent.management_jurisdiction], 5),
+            *one_hot(jurisdiction_vocab[ent.tax_residence], 5),
+        ])
 
         # subsidiary graph connectivity matrix
         if ent.parent_id is not None and ent.parent_id in entity_index:
@@ -64,7 +85,7 @@ def build_graph(state: WorldState):
     
     data["entity"].x = torch.tensor(entity_x, dtype=torch.float)
 
-    data["jurisdiction"].x = torch.arange(len(jurisdiction_vocab), dtype=torch.float).unsqueeze(1)
+    data["jurisdiction"].x = torch.eye(len(jurisdiction_vocab), dtype=torch.float)
 
     # load subsidiary graph connectivity matrix
     if has_subsidiary:
@@ -80,5 +101,8 @@ def build_graph(state: WorldState):
     data["entity", "incorporated_in", "jurisdiction"].edge_index = torch.tensor(incorporated_in, dtype=torch.long).t().contiguous()
     data["entity", "tax_resident_of", "jurisdiction"].edge_index = torch.tensor(tax_residence, dtype=torch.long).t().contiguous()
     data["entity", "managed_from", "jurisdiction"].edge_index = torch.tensor(managed_from, dtype=torch.long).t().contiguous()
+    data["jurisdiction", "incorporates", "entity"].edge_index = torch.tensor(incorporated_in, dtype=torch.long).t().flip(0).contiguous()
+    data["jurisdiction", "has_tax_resident", "entity"].edge_index = torch.tensor(tax_residence, dtype=torch.long).t().flip(0).contiguous()
+    data["jurisdiction", "manages", "entity"].edge_index = torch.tensor(managed_from, dtype=torch.long).t().flip(0).contiguous()
 
     return data

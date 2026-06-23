@@ -3,6 +3,9 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 def masked_categorical(logits, mask=None):
+    if logits.dim() == 2 and logits.size(0) == 1:
+        logits = logits.squeeze(0)
+
     if mask is not None:
         if not mask.any():
             raise ValueError(f"All actions masked out. mask={mask}, logits={logits}")
@@ -55,7 +58,7 @@ def evaluate_action(model, obs, action, masks=None):
         log_prob = log_prob + dist_cmp_type.log_prob(action["company_type"])
         entropy = entropy + dist_cmp_type.entropy()
 
-    return log_prob, entropy, out["value"]
+    return log_prob.squeeze(), entropy.squeeze(), out["value"]
 
 def ppo_update(
         model,

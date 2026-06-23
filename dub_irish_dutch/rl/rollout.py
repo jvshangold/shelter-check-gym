@@ -16,10 +16,10 @@ class RolloutBuffer:
     def add(self, obs, action, log_prob, reward, done, value, masks):
         self.observations.append(obs)
         self.actions.append(action)
-        self.log_probs.append(log_prob.detach())
+        self.log_probs.append(log_prob.detach().squeeze())
         self.rewards.append(float(reward))
         self.dones.append(float(done))
-        self.values.append(value.detach())
+        self.values.append(value.detach().squeeze())
         self.masks.append(masks)
 
     def clear(self):
@@ -33,7 +33,7 @@ class RolloutBuffer:
         """
         rewards = torch.tensor(self.rewards, dtype=torch.float32)
         dones = torch.tensor(self.dones, dtype=torch.float32)
-        values = torch.stack(self.values).squeeze(-1)
+        values = torch.stack(self.values)
 
         advantages = torch.zeros_like(rewards)
         gae = 0.0

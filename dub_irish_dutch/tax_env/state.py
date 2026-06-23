@@ -64,8 +64,8 @@ class WorldState:
         if new_owner not in self.entities:
             raise ValueError(f"Unknown entity: {new_owner}")
 
-        # In this simplified model, the entity holding IP becomes a holding company.
-        self.entities[new_owner].company_type = "Holding"
+        if self.entities[new_owner].company_type != "Holding":
+            raise ValueError("IP can only be transferred to a holding company.")
 
         self.ip_owner = new_owner
         self.licenses.clear()
@@ -85,12 +85,6 @@ class WorldState:
             raise ValueError(
                 f"{licensor} does not own or have a license to use IP"
             )
-
-        # A company receiving a license is operating in the market.
-        self.entities[licensee].company_type = "Operating"
-
-        # A company licensing IP onward is functioning as a holding/IP intermediary.
-        self.entities[licensor].company_type = "Holding"
 
         # cycle check
         cur = licensor
@@ -179,41 +173,3 @@ class WorldState:
             for entity_id, entity in self.entities.items()
             if self.has_ip_rights(entity_id)
         }
-
-    def has_irish_sandwich(self) -> bool:
-        """
-        Checks for a generic Irish/Dutch/Bermuda-style royalty chain:
-
-            Ireland tax resident -> Netherlands tax resident -> Bermuda tax resident
-
-        using the license graph:
-            licensee -> licensor
-        """
-        for start_id in self.entities:
-            cur_id = start_id
-            seen_ireland_to_netherlands = False
-            visited = set()
-
-            while cur_id in self.licenses:
-                if cur_id in visited:
-                    break
-                visited.add(cur_id)
-
-                next_id = self.licenses[cur_id]
-
-                cur_tr = self.entities[cur_id].tax_residence
-                next_tr = self.entities[next_id].tax_residence
-
-                if cur_tr == "Ireland" and next_tr == "Netherlands":
-                    seen_ireland_to_netherlands = True
-
-                if (
-                    seen_ireland_to_netherlands
-                    and cur_tr == "Netherlands"
-                    and next_tr == "Bermuda"
-                ):
-                    return True
-
-                cur_id = next_id
-
-        return False

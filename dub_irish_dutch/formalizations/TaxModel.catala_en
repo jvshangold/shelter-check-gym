@@ -28,6 +28,7 @@ declaration scope RoyaltyDeductibility:
   internal receiver_country content Jurisdiction
   internal eu_royalty_deductible content boolean
   internal us_royalty_deductible content boolean
+  internal dutch_conduit_royalty_deductible content boolean
   output deductible_amount content money
 
 declaration scope CorporateTaxComputation:
@@ -99,8 +100,15 @@ scope RoyaltyDeductibility:
     payer_country with pattern US
 
 scope RoyaltyDeductibility:
+  definition dutch_conduit_royalty_deductible equals
+    payer_country with pattern Netherlands
+    and receiver_country with pattern Bermuda
+
+scope RoyaltyDeductibility:
   definition deductible_amount equals
     if eu_royalty_deductible then
+      payment.amount
+    else if dutch_conduit_royalty_deductible then
       payment.amount
     else if us_royalty_deductible then
       payment.amount
