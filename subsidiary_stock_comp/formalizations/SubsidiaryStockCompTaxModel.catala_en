@@ -1,0 +1,60 @@
+> Module SubsidiaryStockCompTaxModel
+
+```catala
+declaration structure StockCompLiquidationInput:
+  data stock_compensation_fair_market_value content money
+  data shareholder_stock_basis content money
+  data liquidation_distribution_fair_market_value content money
+  data shareholder_ownership_percent content decimal
+
+declaration scope SubsidiaryStockCompComputation:
+  input transaction content StockCompLiquidationInput
+
+  internal section_331_applies content boolean
+  internal liquidation_loss content money
+
+  output ordinary_deduction content money
+  output capital_loss content money
+  output total_tax_advantage content money
+```
+
+```catala
+scope SubsidiaryStockCompComputation:
+  definition section_331_applies equals
+    transaction.shareholder_ownership_percent < 80%
+
+  definition ordinary_deduction equals
+    transaction.stock_compensation_fair_market_value
+
+  definition liquidation_loss equals
+    if transaction.shareholder_stock_basis <= transaction.liquidation_distribution_fair_market_value then
+      $0
+    else
+      transaction.shareholder_stock_basis - transaction.liquidation_distribution_fair_market_value
+
+  definition capital_loss equals
+    if section_331_applies then
+      liquidation_loss
+    else
+      $0
+
+  definition total_tax_advantage equals
+    ordinary_deduction + capital_loss
+```
+
+```catala
+declaration scope TestNotice2000_60Pattern:
+  output computation content SubsidiaryStockCompComputation
+
+scope TestNotice2000_60Pattern:
+  definition computation equals
+    output of SubsidiaryStockCompComputation with {
+      -- transaction:
+        StockCompLiquidationInput {
+          -- stock_compensation_fair_market_value: $99
+          -- shareholder_stock_basis: $100
+          -- liquidation_distribution_fair_market_value: $1
+          -- shareholder_ownership_percent: 50%
+        }
+    }
+```

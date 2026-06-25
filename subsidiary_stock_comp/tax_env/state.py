@@ -38,22 +38,34 @@ class Stock:
 class TaxLedger:
     ordinary_deductions: dict[str, float] = field(default_factory=dict)
     capital_losses: dict[str, float] = field(default_factory=dict)
-    capital_gains: dict[str, float] = field(default_factory=dict)
+    liquidation_events: list[LiquidationEvent] = field(default_factory=list)
 
     def add_ordinary_deduction(self, corporation_id: str, amount: float) -> None:
         self.ordinary_deductions[corporation_id] = (
             self.ordinary_deductions.get(corporation_id, 0.0) + amount
         )
 
-    def add_capital_result(self, corporation_id: str, amount: float) -> None:
-        if amount < 0:
+    def add_capital_loss(self, corporation_id: str, amount: float) -> None:
+        if amount > 0:
             self.capital_losses[corporation_id] = (
-                self.capital_losses.get(corporation_id, 0.0) + abs(amount)
+                self.capital_losses.get(corporation_id, 0.0) + amount
             )
-        elif amount > 0:
-            self.capital_gains[corporation_id] = (
-                self.capital_gains.get(corporation_id, 0.0) + amount
+
+    def add_liquidation_event(
+        self,
+        shareholder_id: str,
+        stock_basis: float,
+        distribution_fmv: float,
+        ownership_percent: float,
+    ) -> None:
+        self.liquidation_events.append(
+            LiquidationEvent(
+                shareholder_id=shareholder_id,
+                stock_basis=stock_basis,
+                distribution_fmv=distribution_fmv,
+                ownership_percent=ownership_percent,
             )
+        )
 
     @property
     def total_ordinary_deductions(self) -> float:
@@ -64,12 +76,16 @@ class TaxLedger:
         return sum(self.capital_losses.values())
 
     @property
-    def total_capital_gains(self) -> float:
-        return sum(self.capital_gains.values())
-
-    @property
     def total_tax_advantage(self) -> float:
         return self.total_ordinary_deductions + self.total_capital_losses
+
+
+@dataclass
+class LiquidationEvent:
+    shareholder_id: str
+    stock_basis: float
+    distribution_fmv: float
+    ownership_percent: float
 
 
 @dataclass
@@ -259,8 +275,8 @@ class WorldState:
             raise ValueError("Holder must own compensated stock")
         if stock.issuer_id != service_recipient_id:
             raise ValueError("Stock must be stock of the service recipient")
-        if amount > stock.fmv:
-            raise ValueError("Cannot compensate more stock value than the holder owns")
+        if amount >= stock.fmv:
+            raise ValueError("Compensation must leave stock value for liquidation")
 
         self._remove_stock_value(stock_id, amount)
         self.ledger.add_ordinary_deduction(service_recipient_id, amount)
@@ -284,11 +300,15 @@ class WorldState:
         for stock in list(shareholder_stock):
             share = stock.percent / total_percent
             amount_received = liquidating_assets * share
+            self.ledger.add_liquidation_event(
+                shareholder_id=stock.holder_id,
+                stock_basis=stock.basis,
+                distribution_fmv=amount_received,
+                ownership_percent=stock.percent,
+            )
             if self._section_331_applies(stock.holder_id, corporation_id):
-                self.ledger.add_capital_result(
-                    stock.holder_id,
-                    amount_received - stock.basis,
-                )
+                loss = max(0.0, stock.basis - amount_received)
+                self.ledger.add_capital_loss(stock.holder_id, loss)
 
         self._distribute_cash_on_liquidation(corporation_id, shareholder_stock, total_percent)
         self._distribute_stock_on_liquidation(corporation_id, shareholder_stock, total_percent)

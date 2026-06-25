@@ -1,4 +1,6 @@
 import copy
+import sys
+from dataclasses import dataclass
 from typing import Dict
 
 import gymnasium as gym
@@ -7,11 +9,24 @@ from gymnasium import Space, spaces
 from .render import build_graph
 from .state import WorldState
 
+sys.path.append("subsidiary_stock_comp/formalizations/_target/subsidiary_stock_comp_tax_rules")
+sys.path.append("subsidiary_stock_comp/formalizations/_build/libcatala/python")
+
+from python import SubsidiaryStockCompTaxModel as TaxModel
+from python import catala_runtime
+
 
 FORM_SUBCORP = 0
 BUY_STOCK = 1
 COMPENSATE_EMPLOYEES = 2
 LIQUIDATE_CORP = 3
+
+
+@dataclass
+class TaxComputation:
+    ordinary_deduction: float
+    capital_loss: float
+    total_tax_advantage: float
 
 
 class TaxEnv(gym.Env):
@@ -24,6 +39,7 @@ class TaxEnv(gym.Env):
         FORMATION_SPLITS=None,
         EXTRA_CORPORATION_PENALTY=0.01,
         SUCCESS_ADVANTAGE=198.0,
+        SUCCESS_BONUS=1.0,
         PRINT_INVALID_ACTIONS=False,
     ):
         super().__init__()
@@ -48,6 +64,7 @@ class TaxEnv(gym.Env):
         self.max_steps = MAX_STEPS
         self.extra_corporation_penalty = EXTRA_CORPORATION_PENALTY
         self.success_advantage = SUCCESS_ADVANTAGE
+        self.success_bonus = SUCCESS_BONUS
         self.print_invalid_actions = PRINT_INVALID_ACTIONS
 
         self.state = WorldState.initial_state()
@@ -86,7 +103,8 @@ class TaxEnv(gym.Env):
             self.prev_normalized_tax_advantage = previous_normalized_tax_advantage
             invalid_action = True
 
-        current_advantage = self.compute_tax_advantage()
+        tax_computation = self.compute_tax()
+        current_advantage = tax_computation.total_tax_advantage
         current_normalized_advantage = self.normalize_tax_advantage(current_advantage)
         reward = (
             current_normalized_advantage
@@ -100,6 +118,7 @@ class TaxEnv(gym.Env):
 
         if current_advantage >= self.success_advantage and not invalid_action:
             terminated = True
+            reward += self.success_bonus
 
         self.steps += 1
         if self.steps >= self.max_steps:
@@ -109,10 +128,11 @@ class TaxEnv(gym.Env):
         info = {
             "invalid_action": invalid_action,
             "tax_advantage": current_advantage,
+            "raw_tax_advantage": current_advantage,
             "normalized_tax_advantage": current_normalized_advantage,
-            "ordinary_deductions": self.state.ledger.total_ordinary_deductions,
-            "capital_losses": self.state.ledger.total_capital_losses,
-            "capital_gains": self.state.ledger.total_capital_gains,
+            "ordinary_deductions": tax_computation.ordinary_deduction,
+            "capital_losses": tax_computation.capital_loss,
+            "tax_computation": tax_computation,
         }
         return self.get_observation(), reward, terminated, truncated, info
 
@@ -129,7 +149,32 @@ class TaxEnv(gym.Env):
         return build_graph(self.state)
 
     def compute_tax_advantage(self) -> float:
-        return self.state.ledger.total_tax_advantage
+        return self.compute_tax().total_tax_advantage
+
+    def compute_tax(self) -> TaxComputation:
+        ordinary_deduction = self._compute_catala_tax(
+            stock_compensation_fair_market_value=(
+                self.state.ledger.total_ordinary_deductions
+            ),
+            shareholder_stock_basis=0.0,
+            liquidation_distribution_fair_market_value=0.0,
+            shareholder_ownership_percent=100.0,
+        ).ordinary_deduction
+
+        capital_loss = 0.0
+        for event in self.state.ledger.liquidation_events:
+            capital_loss += self._compute_catala_tax(
+                stock_compensation_fair_market_value=0.0,
+                shareholder_stock_basis=event.stock_basis,
+                liquidation_distribution_fair_market_value=event.distribution_fmv,
+                shareholder_ownership_percent=event.ownership_percent,
+            ).capital_loss
+
+        return TaxComputation(
+            ordinary_deduction=ordinary_deduction,
+            capital_loss=capital_loss,
+            total_tax_advantage=ordinary_deduction + capital_loss,
+        )
 
     def normalize_tax_advantage(self, tax_advantage: float) -> float:
         if self.success_advantage <= 0:
@@ -202,6 +247,48 @@ class TaxEnv(gym.Env):
         if idx >= len(self.cash_amounts):
             raise ValueError(f"Unknown cash amount index: {idx}")
         return self.cash_amounts[idx]
+
+    def _compute_catala_tax(
+        self,
+        stock_compensation_fair_market_value: float,
+        shareholder_stock_basis: float,
+        liquidation_distribution_fair_market_value: float,
+        shareholder_ownership_percent: float,
+    ) -> TaxComputation:
+        transaction = TaxModel.StockCompLiquidationInput(
+            stock_compensation_fair_market_value=self._money(
+                stock_compensation_fair_market_value,
+            ),
+            shareholder_stock_basis=self._money(shareholder_stock_basis),
+            liquidation_distribution_fair_market_value=self._money(
+                liquidation_distribution_fair_market_value,
+            ),
+            shareholder_ownership_percent=self._decimal_percent(
+                shareholder_ownership_percent,
+            ),
+        )
+
+        result = TaxModel.subsidiary_stock_comp_computation(
+            TaxModel.SubsidiaryStockCompComputationIn(
+                transaction_in=transaction,
+            )
+        )
+
+        return TaxComputation(
+            ordinary_deduction=self._money_to_float(result.ordinary_deduction),
+            capital_loss=self._money_to_float(result.capital_loss),
+            total_tax_advantage=self._money_to_float(result.total_tax_advantage),
+        )
+
+    def _money(self, amount: float):
+        return catala_runtime.Money(catala_runtime.Integer(round(amount * 100)))
+
+    def _money_to_float(self, money) -> float:
+        return float(money.value.value) / 100.0
+
+    def _decimal_percent(self, percent: float):
+        basis_points = round(percent * 100)
+        return catala_runtime.Decimal(f"{basis_points}/10000")
 
     def _refresh_indices(self) -> None:
         self.idx_to_corporation = {

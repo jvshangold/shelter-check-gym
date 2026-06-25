@@ -19,16 +19,18 @@ class GNN(torch.nn.Module):
 
         self.conv1 = HeteroConv({
             ("corporation", "has_cash", "cash"): SAGEConv((-1, -1), hidden_channels),
-            ("corporation", "has_stock", "stock"): SAGEConv((-1, -1), hidden_channels),
+            ("stock", "held_by", "corporation"): SAGEConv((-1, -1), hidden_channels),
+            ("corporation", "issues_stock", "stock"): SAGEConv((-1, -1), hidden_channels),
             ("corporation", "has_subcorp", "corporation"): SAGEConv((-1, -1), hidden_channels),
-            ("stock_market", "sells_stock", "stock"): SAGEConv((-1, -1), hidden_channels),
+            ("corporation", "stock_listed_on", "stock_market"): SAGEConv((-1, -1), hidden_channels),
         }, aggr="sum")
 
         self.conv2 = HeteroConv({
             ("corporation", "has_cash", "cash"): SAGEConv((-1, -1), out_channels),
-            ("corporation", "has_stock", "stock"): SAGEConv((-1, -1), out_channels),
+            ("stock", "held_by", "corporation"): SAGEConv((-1, -1), out_channels),
+            ("corporation", "issues_stock", "stock"): SAGEConv((-1, -1), out_channels),
             ("corporation", "has_subcorp", "corporation"): SAGEConv((-1, -1), out_channels),
-            ("stock_market", "sells_stock", "stock"): SAGEConv((-1, -1), out_channels),
+            ("corporation", "stock_listed_on", "stock_market"): SAGEConv((-1, -1), out_channels),
         }, aggr="sum")
 
     def forward(self, data):

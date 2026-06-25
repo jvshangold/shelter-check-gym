@@ -21,9 +21,10 @@ def build_graph(state: WorldState):
     market_x = [[1.0]]
 
     has_cash = []
-    has_stock = []
+    held_by = []
+    issues_stock = []
     has_subcorp = []
-    market_sells_stock = []
+    stock_listed_on_market = []
 
     for corp_id in corp_ids:
         corporation = state.corporations[corp_id]
@@ -38,6 +39,8 @@ def build_graph(state: WorldState):
 
         if corporation.parent_id is not None:
             has_subcorp.append([corp_index[corporation.parent_id], corp_index[corp_id]])
+        if corp_id == state.taxpayer_id:
+            stock_listed_on_market.append([corp_index[corp_id], 0])
 
     for cash_id in cash_ids:
         cash = state.cash[cash_id]
@@ -53,9 +56,8 @@ def build_graph(state: WorldState):
             1.0 if stock.issuer_id == state.taxpayer_id else 0.0,
             1.0 if stock.issuer_id == state.subsidiary_id else 0.0,
         ])
-        has_stock.append([corp_index[stock.holder_id], stock_index[stock_id]])
-        if stock.issuer_id == state.taxpayer_id:
-            market_sells_stock.append([0, stock_index[stock_id]])
+        held_by.append([stock_index[stock_id], corp_index[stock.holder_id]])
+        issues_stock.append([corp_index[stock.issuer_id], stock_index[stock_id]])
 
     data["corporation"].x = node_features(corp_x, 6)
     data["cash"].x = node_features(cash_x, 2)
@@ -63,10 +65,11 @@ def build_graph(state: WorldState):
     data["stock_market"].x = torch.tensor(market_x, dtype=torch.float)
 
     data["corporation", "has_cash", "cash"].edge_index = edge_index(has_cash)
-    data["corporation", "has_stock", "stock"].edge_index = edge_index(has_stock)
+    data["stock", "held_by", "corporation"].edge_index = edge_index(held_by)
+    data["corporation", "issues_stock", "stock"].edge_index = edge_index(issues_stock)
     data["corporation", "has_subcorp", "corporation"].edge_index = edge_index(has_subcorp)
-    data["stock_market", "sells_stock", "stock"].edge_index = edge_index(
-        market_sells_stock
+    data["corporation", "stock_listed_on", "stock_market"].edge_index = edge_index(
+        stock_listed_on_market
     )
 
     return data
