@@ -26,9 +26,10 @@ class RolloutBuffer:
         self.__init__()
 
     def compute_advantages(self, last_value, gamma=0.99, lam=0.95):
-        rewards = torch.tensor(self.rewards, dtype=torch.float32)
-        dones = torch.tensor(self.dones, dtype=torch.float32)
         values = torch.stack(self.values).squeeze(-1)
+        device = values.device
+        rewards = torch.tensor(self.rewards, dtype=torch.float32, device=device)
+        dones = torch.tensor(self.dones, dtype=torch.float32, device=device)
 
         advantages = torch.zeros_like(rewards)
         gae = 0.0
@@ -53,8 +54,8 @@ class RolloutBuffer:
             "observations": self.observations,
             "actions": self.actions,
             "log_probs": torch.stack(self.log_probs),
-            "rewards": torch.tensor(self.rewards, dtype=torch.float32),
-            "dones": torch.tensor(self.dones, dtype=torch.float32),
+            "rewards": torch.tensor(self.rewards, dtype=torch.float32, device=self.returns.device),
+            "dones": torch.tensor(self.dones, dtype=torch.float32, device=self.returns.device),
             "advantages": self.advantages,
             "returns": self.returns,
             "masks": self.masks,
