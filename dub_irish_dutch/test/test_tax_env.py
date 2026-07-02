@@ -53,11 +53,11 @@ def test_no_license_cycle():
     state.add_child("root", "Bermuda", "Ireland", "Bermuda", "Holding")     # company_1
     state.add_child("root", "Ireland", "Ireland", "Ireland", "Operating")  # company_2
 
-    state.rent_ip("company_1", "root")
+    state.transfer_ip("company_1")
     state.rent_ip("company_2", "company_1")
 
     with pytest.raises(ValueError, match="This would create a licensing cycle"):
-        state.rent_ip("root", "company_2")
+        state.rent_ip("company_1", "company_2")
 
 
 # write test to put complex state into build_graph
@@ -78,11 +78,9 @@ def test_build_graph():
     data = build_graph(state=state)
 
     assert data["entity"].x.shape == (4, 20)
-    assert data["jurisdiction"].x.shape == (5, 5)
     assert data["entity"].x[:, 0].max().item() <= 1.0
-    assert data["jurisdiction", "incorporates", "entity"].edge_index.shape == (2, 4)
-    assert data["jurisdiction", "has_tax_resident", "entity"].edge_index.shape == (2, 4)
-    assert data["jurisdiction", "manages", "entity"].edge_index.shape == (2, 4)
+    assert data["entity", "has_subsidiary", "entity"].edge_index.shape == (2, 3)
+    assert data["entity", "licenses_from", "entity"].edge_index.shape == (2, 2)
 
 
 def test_GNN_dims():
@@ -161,31 +159,22 @@ def test_compute_profit():
     env = TaxEnv()
     env.reset()
 
-    # license root from child:
-    # licensee = root
-    # licensor = company_1
-    #
-    # Since action_type = 1 ignores jurisdiction/company type args,
-    # the last three values are just filler.
-    env.step((1, 0, 1, 0, 0, 0))
-
     profit = env.compute_profit()
 
     assert profit is not None
 
 
-def test_raw_advantage_without_sandwich_gets_shaping_but_not_completion_reward():
+def test_direct_parent_child_license_is_invalid():
     env = TaxEnv()
     env.reset()
 
     env.step((2, 0, 1, 0, 0, 0))  # transfer IP to Bermuda
     _, reward, terminated, _, info = env.step((1, 0, 1, 0, 0, 0))  # root rents from Bermuda
 
-    assert info["raw_tax_advantage"] > 0.0
+    assert info["invalid_action"]
     assert info["tax_advantage"] == 0.0
-    assert info["normalized_raw_tax_advantage"] > 0.0
     assert not info["loophole_gate_complete"]
-    assert reward > 0.0
+    assert reward < 0.0
     assert not terminated
 
 
@@ -207,24 +196,24 @@ def test_inbound_royalty_is_taxable_to_recipient():
     env.reset()
 
     env.step((0, 0, 0, 1, 1, 0))  # company_2: Netherlands holding
+    env.step((0, 0, 0, 4, 4, 1))  # company_3: Germany operating
     env.step((2, 0, 2, 0, 0, 0))  # transfer IP to Netherlands
-    _, _, _, _, info = env.step((1, 0, 2, 0, 0, 0))  # root rents from Netherlands
+    _, _, _, _, info = env.step((1, 3, 2, 0, 0, 0))  # Germany rents from Netherlands
 
-    assert info["current_profit"] == pytest.approx(522_760_000.0)
     assert info["current_profit"] < info["baseline_profit"]
     assert info["raw_tax_advantage"] == 0.0
 
 
-def test_rent_ip_does_not_change_company_types():
+def test_invalid_parent_child_rent_ip_does_not_change_company_types():
     env = TaxEnv()
     env.reset()
 
     _, reward, _, _, info = env.step((1, 1, 0, 0, 0, 0))  # Bermuda rents from root
 
-    assert not info["invalid_action"]
+    assert info["invalid_action"]
     assert env.state.entities["root"].company_type == "Operating"
     assert env.state.entities["company_1"].company_type == "Holding"
-    assert reward <= 0.0
+    assert reward < 0.0
 
 
 def test_transfer_ip_requires_holding_company():
@@ -240,7 +229,7 @@ def test_transfer_ip_requires_holding_company():
     assert env.state.entities["company_2"].company_type == "Operating"
 
 
-def test_two_hop_royalty_chain_gates_tax_advantage():
+def test_sibling_royalty_chain_can_produce_tax_advantage():
     env = TaxEnv()
     env.reset()
 
@@ -256,6 +245,22 @@ def test_two_hop_royalty_chain_gates_tax_advantage():
     assert info["loophole_gate_complete"]
     assert reward > 0.0
     assert terminated
+
+
+def test_market_revenue_middle_company_shapes_but_does_not_complete():
+    env = TaxEnv()
+    env.reset()
+
+    env.step((0, 0, 0, 1, 1, 1))  # company_2: Netherlands operating
+    env.step((2, 0, 1, 0, 0, 0))  # transfer IP to Bermuda holding
+    _, _, terminated, _, info = env.step(
+        (1, 2, 1, 0, 0, 0)
+    )  # Netherlands operating rents from Bermuda
+
+    assert info["raw_tax_advantage"] > 0.0
+    assert info["tax_advantage"] == 0.0
+    assert not info["loophole_gate_complete"]
+    assert not terminated
 
 
 def test_completion_gate_is_not_irish_specific():

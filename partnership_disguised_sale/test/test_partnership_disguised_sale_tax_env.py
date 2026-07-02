@@ -98,7 +98,7 @@ def test_taxpayer_self_financed_cash_out_without_buyer_economics_has_no_reward_a
     assert not env.state.has_completed_economic_sale_to_partnership("T")
 
 
-def test_env_reaches_desired_loophole_with_four_actions():
+def test_env_reaches_success_threshold_with_four_actions():
     env = TaxEnv()
     env.reset()
 
@@ -116,7 +116,6 @@ def test_env_reaches_desired_loophole_with_four_actions():
     assert tax.recognized_gain == 10.0
     assert tax.deferred_gain == 90.0
     assert tax.tax_savings == 18.0
-    assert env.has_desired_loophole_structure()
 
 
 def test_wrong_guarantor_does_not_get_liability_exclusion():

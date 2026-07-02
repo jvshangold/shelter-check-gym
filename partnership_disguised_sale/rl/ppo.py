@@ -4,6 +4,9 @@ from torch.distributions import Categorical
 
 
 def masked_categorical(logits, mask=None):
+    if logits.dim() == 2 and logits.size(0) == 1:
+        logits = logits.squeeze(0)
+
     if mask is not None:
         if not mask.any():
             raise ValueError(f"All actions masked out. mask={mask}, logits={logits}")

@@ -198,7 +198,7 @@ def test_render_graph_shapes_and_offset_edges():
     assert data["leg"].x.shape == (4, 7)
     assert data["leg", "offsets", "leg"].edge_index.shape == (2, 4)
     assert data["individual", "invested_in", "ctf"].edge_index.shape == (2, 2)
-    assert data["individual", "not_invested_in", "ctf"].edge_index.shape == (2, 1)
+    assert ("individual", "not_invested_in", "ctf") not in data.edge_types
 
 
 def test_gnn_forward_shape():

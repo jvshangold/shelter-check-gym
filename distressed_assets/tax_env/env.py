@@ -119,8 +119,6 @@ class TaxEnv(gym.Env):
             "invalid_action": invalid_action,
             "tax_advantage": current_tax_advantage,
             "raw_tax_savings": current_raw_savings,
-            "desired_savings": current_tax_advantage,
-            "broad_savings": current_raw_savings,
         }
 
         return obs, reward, terminated, truncated, info
@@ -222,14 +220,7 @@ class TaxEnv(gym.Env):
         return total
 
     def compute_tax_advantage(self) -> float:
-        return self.compute_desired_loophole_savings()
-
-    def has_desired_loophole_structure(self) -> bool:
-        """
-        The target pattern is a sold distressed property in a direct subtrust of
-        the root trust, with the taxpayer holding section 678 power.
-        """
-        return self.compute_desired_loophole_savings() > 0.0
+        return self.compute_raw_tax_savings()
 
     def compute_complexity_penalty(self) -> float:
         extra_trusts = max(0, len(self.state.trusts) - 2)
@@ -263,31 +254,6 @@ class TaxEnv(gym.Env):
             max_depth = max(max_depth, depth)
 
         return max_depth
-
-    def compute_desired_loophole_savings(self) -> float:
-        total = 0.0
-
-        for asset in self.state.assets.values():
-            if asset.kind != AssetKind.PROPERTY:
-                continue
-
-            if not asset.is_sold:
-                continue
-
-            if asset.owner_type != OwnerType.TRUST:
-                continue
-
-            trust = self.state.trusts[asset.owner_id]
-
-            if trust.parent_trust_id != self.state.root_trust_id:
-                continue
-
-            if trust.section_678_power_holder_id != self.state.taxpayer_id:
-                continue
-
-            total += self._compute_catala_savings(asset, self.state.taxpayer_id)
-
-        return total
 
     def render(self):
         return self.render_world()

@@ -212,7 +212,7 @@ def test_env_move_asset_sell_and_vesting_power():
     assert env.compute_tax_advantage() > 0.0
 
 
-def test_broad_savings_without_gated_structure_is_not_rewarded():
+def test_nested_trust_tax_savings_are_rewarded_fiscally():
     env = TaxEnv()
     env.reset()
 
@@ -234,9 +234,9 @@ def test_broad_savings_without_gated_structure_is_not_rewarded():
     _, reward, terminated, _, info = env.step([2, 0, 1, 0])  # sell asset
 
     assert info["raw_tax_savings"] > 0.0
-    assert info["tax_advantage"] == 0.0
-    assert reward <= 0.0
-    assert not terminated
+    assert info["tax_advantage"] == info["raw_tax_savings"]
+    assert reward > 0.0
+    assert terminated
 
 
 def test_env_rejects_moving_cash_asset():

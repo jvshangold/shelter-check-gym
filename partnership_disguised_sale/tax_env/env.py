@@ -53,6 +53,7 @@ class TaxEnv(gym.Env):
         MAX_ASSETS=4,
         MAX_LOANS=4,
         MAX_STEPS=8,
+        SUCCESS_TAX_ADVANTAGE=18.0,
         AMOUNT_BUCKETS=None,
         EXTRA_LOAN_PENALTY=0.01,
         EXTRA_CASH_LOT_PENALTY=0.005,
@@ -73,6 +74,7 @@ class TaxEnv(gym.Env):
         self.max_assets = MAX_ASSETS
         self.max_loans = MAX_LOANS
         self.max_steps = MAX_STEPS
+        self.success_tax_advantage = SUCCESS_TAX_ADVANTAGE
         self.extra_loan_penalty = EXTRA_LOAN_PENALTY
         self.extra_cash_lot_penalty = EXTRA_CASH_LOT_PENALTY
 
@@ -131,7 +133,10 @@ class TaxEnv(gym.Env):
         if invalid_action:
             reward -= 1.0
 
-        if self.has_desired_loophole_structure() and not invalid_action:
+        if (
+            current_tax_advantage >= self.success_tax_advantage
+            and not invalid_action
+        ):
             terminated = True
 
         self.steps += 1
@@ -194,19 +199,6 @@ class TaxEnv(gym.Env):
         return (
             self.extra_loan_penalty * extra_loans
             + self.extra_cash_lot_penalty * extra_cash_lots
-        )
-
-    def has_desired_loophole_structure(self) -> bool:
-        tax = self.compute_tax()
-        return (
-            self.state.cash_distributed_to(self.state.taxpayer_id) >= 100.0
-            and self.state.contributed_asset_by(self.state.taxpayer_id) is not None
-            and self.state.has_non_transferor_economic_interest(
-                partnership_id=self.state.partnership_id,
-                transferor_id=self.state.taxpayer_id,
-            )
-            and tax.recognized_gain <= 10.0
-            and tax.deferred_gain >= 90.0
         )
 
     def render_world(self, filename="partnership_disguised_sale_world"):

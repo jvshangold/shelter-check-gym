@@ -36,8 +36,6 @@ def build_graph(state: WorldState) -> HeteroData:
 
     invested_in = []
     has_investor = []
-    not_invested_in = []
-    missing_investor = []
     owns_leg = []
     held_by_ctf = []
     offsets = []
@@ -61,9 +59,6 @@ def build_graph(state: WorldState) -> HeteroData:
         if contribution > 0.0:
             invested_in.append([individual_i, ctf_i])
             has_investor.append([ctf_i, individual_i])
-        else:
-            not_invested_in.append([individual_i, ctf_i])
-            missing_investor.append([ctf_i, individual_i])
 
     for leg_id in leg_ids:
         leg = state.straddle_legs[leg_id]
@@ -101,13 +96,6 @@ def build_graph(state: WorldState) -> HeteroData:
 
     data["individual", "invested_in", "ctf"].edge_index = edge_index(invested_in)
     data["ctf", "has_investor", "individual"].edge_index = edge_index(has_investor)
-
-    data["individual", "not_invested_in", "ctf"].edge_index = edge_index(
-        not_invested_in
-    )
-    data["ctf", "missing_investor", "individual"].edge_index = edge_index(
-        missing_investor
-    )
 
     data["ctf", "owns_leg", "leg"].edge_index = edge_index(owns_leg)
     data["leg", "held_by_ctf", "ctf"].edge_index = edge_index(held_by_ctf)

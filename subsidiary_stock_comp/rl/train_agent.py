@@ -535,7 +535,7 @@ def save_best_snapshot(snapshot, output_dir, update, snapshot_count):
             metadata.write(f"{i}. {action_description}\n")
 
 
-def train(total_updates=1000, rollout_steps=256):
+def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interval=25):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     env = TaxEnv(
@@ -573,6 +573,7 @@ def train(total_updates=1000, rollout_steps=256):
         invalid_count = 0
         positive_reward_count = 0
         success_count = 0
+        episode_count = 0
         random_exploration_count = 0
         dead_end_count = 0
         entropy_total = 0.0
@@ -580,6 +581,13 @@ def train(total_updates=1000, rollout_steps=256):
         best_snapshot = None
         current_episode_actions = []
         random_action_prob = max(0.02, 0.25 * (0.995 ** update))
+
+        if update % log_interval == 0:
+            print(
+                f"update_start: {update}; "
+                f"random_action_prob: {random_action_prob:.4f}",
+                flush=True,
+            )
 
         for _ in range(rollout_steps):
             if not has_available_action(env, device):
@@ -643,6 +651,7 @@ def train(total_updates=1000, rollout_steps=256):
             cumulative_reward += reward
 
             if done:
+                episode_count += 1
                 obs = reset_training_env(env, device)
                 current_episode_actions = []
             else:
@@ -659,8 +668,8 @@ def train(total_updates=1000, rollout_steps=256):
             rollout=buffer,
         )
 
-        if update % 25 == 0:
-            if best_snapshot is not None:
+        if update % log_interval == 0:
+            if best_snapshot is not None and save_snapshots:
                 save_best_snapshot(
                     snapshot=best_snapshot,
                     output_dir=snapshot_dir,
@@ -668,24 +677,36 @@ def train(total_updates=1000, rollout_steps=256):
                     snapshot_count=saved_snapshot_count,
                 )
                 saved_snapshot_count += 1
+                print(
+                    "snapshot_saved: "
+                    f"{(snapshot_dir / f'best_structure_{saved_snapshot_count - 1:04d}_update_{update:04d}.txt').resolve()}",
+                    flush=True,
+                )
 
             print(
-                "update: "
+                "update_complete: "
                 f"{update}; loss: {loss}; "
                 f"cumulative_reward: {cumulative_reward}; "
                 f"invalid_count: {invalid_count}; "
                 f"positive_reward_count: {positive_reward_count}; "
                 f"success_count: {success_count}; "
+                f"episode_count: {episode_count}; "
                 f"dead_end_count: {dead_end_count}; "
                 f"best_tax_advantage: {best_tax_advantage}; "
                 f"avg_entropy: {entropy_total / rollout_steps}; "
                 f"random_action_prob: {random_action_prob:.4f}; "
                 f"random_exploration_count: {random_exploration_count}; "
-                f"saved_snapshots: {saved_snapshot_count}"
+                f"saved_snapshots: {saved_snapshot_count}",
+                flush=True,
             )
             for action_type, rewards in reward_by_action.items():
                 if rewards:
-                    print(action_type, sum(rewards) / len(rewards), len(rewards))
+                    print(
+                        ACTION_NAMES.get(action_type, action_type),
+                        sum(rewards) / len(rewards),
+                        len(rewards),
+                        flush=True,
+                    )
 
 
 if __name__ == "__main__":

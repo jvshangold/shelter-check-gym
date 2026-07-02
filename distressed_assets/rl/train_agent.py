@@ -16,6 +16,14 @@ from distressed_assets.rl.ppo import masked_categorical, ppo_update
 from distressed_assets.rl.rollout import RolloutBuffer
 
 
+ACTION_NAMES = {
+    MAKE_SUBTRUST: "make_subtrust",
+    MOVE_ASSET: "move_asset",
+    SELL_ASSET: "sell_asset",
+    GIVE_VESTING_POWER: "give_vesting_power",
+}
+
+
 def make_action_mask(env, device):
     mask = [False, False, False, False]
 
@@ -174,18 +182,51 @@ def _can_give_vesting_power(env, trust_id, individual_id):
     return env._find_foreign_individual_id() is not None
 
 
-def sample_action(model, env, obs, device):
+def masked_uniform(mask):
+    valid = torch.nonzero(mask, as_tuple=False).squeeze(-1)
+    if valid.numel() == 0:
+        raise ValueError(f"All actions masked out. mask={mask}")
+
+    choice = valid[torch.randint(valid.numel(), (1,), device=mask.device)].squeeze(0)
+    log_prob = torch.log(torch.tensor(
+        1.0 / valid.numel(),
+        dtype=torch.float32,
+        device=mask.device,
+    ))
+    entropy = torch.log(torch.tensor(
+        float(valid.numel()),
+        dtype=torch.float32,
+        device=mask.device,
+    ))
+
+    return choice, log_prob, entropy
+
+
+def sample_from_logits_or_uniform(logits, mask, force_uniform):
+    if force_uniform:
+        return masked_uniform(mask)
+
+    dist = masked_categorical(logits, mask)
+    sample = dist.sample()
+    return sample, dist.log_prob(sample), dist.entropy()
+
+
+def sample_action(model, env, obs, device, random_action_prob=0.0):
     out = model(obs)
 
     log_prob = 0.0
     entropy = 0.0
+    force_uniform = torch.rand((), device=device).item() < random_action_prob
 
     action_mask = make_action_mask(env, device)
-    dist_action = masked_categorical(out["action_logits"], action_mask)
-    action_type = dist_action.sample()
+    action_type, action_log_prob, action_entropy = sample_from_logits_or_uniform(
+        out["action_logits"],
+        action_mask,
+        force_uniform,
+    )
 
-    log_prob = log_prob + dist_action.log_prob(action_type)
-    entropy = entropy + dist_action.entropy()
+    log_prob = log_prob + action_log_prob
+    entropy = entropy + action_entropy
 
     action_type_int = action_type.item()
     action = {
@@ -198,19 +239,25 @@ def sample_action(model, env, obs, device):
 
     if action_type_int == MAKE_SUBTRUST:
         trust_mask = make_trust_mask(env, action_type_int, device)
-        dist_trust = masked_categorical(out["trust_logits"], trust_mask)
-        trust = dist_trust.sample()
+        trust, trust_log_prob, trust_entropy = sample_from_logits_or_uniform(
+            out["trust_logits"],
+            trust_mask,
+            force_uniform,
+        )
 
-        log_prob = log_prob + dist_trust.log_prob(trust)
-        entropy = entropy + dist_trust.entropy()
+        log_prob = log_prob + trust_log_prob
+        entropy = entropy + trust_entropy
 
         action["trust"] = trust
         used_masks["trust"] = trust_mask
 
     elif action_type_int == MOVE_ASSET:
         asset_mask = make_asset_mask(env, action_type_int, device)
-        dist_asset = masked_categorical(out["asset_logits"], asset_mask)
-        asset = dist_asset.sample()
+        asset, asset_log_prob, asset_entropy = sample_from_logits_or_uniform(
+            out["asset_logits"],
+            asset_mask,
+            force_uniform,
+        )
 
         trust_mask = make_trust_mask(
             env,
@@ -218,13 +265,16 @@ def sample_action(model, env, obs, device):
             device,
             asset_idx=asset.item(),
         )
-        dist_trust = masked_categorical(out["trust_logits"], trust_mask)
-        trust = dist_trust.sample()
+        trust, trust_log_prob, trust_entropy = sample_from_logits_or_uniform(
+            out["trust_logits"],
+            trust_mask,
+            force_uniform,
+        )
 
-        log_prob = log_prob + dist_asset.log_prob(asset)
-        entropy = entropy + dist_asset.entropy()
-        log_prob = log_prob + dist_trust.log_prob(trust)
-        entropy = entropy + dist_trust.entropy()
+        log_prob = log_prob + asset_log_prob
+        entropy = entropy + asset_entropy
+        log_prob = log_prob + trust_log_prob
+        entropy = entropy + trust_entropy
 
         action["trust"] = trust
         action["asset"] = asset
@@ -233,31 +283,37 @@ def sample_action(model, env, obs, device):
 
     elif action_type_int == SELL_ASSET:
         asset_mask = make_asset_mask(env, action_type_int, device)
-        dist_asset = masked_categorical(out["asset_logits"], asset_mask)
-        asset = dist_asset.sample()
+        asset, asset_log_prob, asset_entropy = sample_from_logits_or_uniform(
+            out["asset_logits"],
+            asset_mask,
+            force_uniform,
+        )
 
-        log_prob = log_prob + dist_asset.log_prob(asset)
-        entropy = entropy + dist_asset.entropy()
+        log_prob = log_prob + asset_log_prob
+        entropy = entropy + asset_entropy
 
         action["asset"] = asset
         used_masks["asset"] = asset_mask
 
     elif action_type_int == GIVE_VESTING_POWER:
         trust_mask = make_trust_mask(env, action_type_int, device)
-        dist_trust = masked_categorical(out["trust_logits"], trust_mask)
-        trust = dist_trust.sample()
+        trust, trust_log_prob, trust_entropy = sample_from_logits_or_uniform(
+            out["trust_logits"],
+            trust_mask,
+            force_uniform,
+        )
 
         individual_mask = make_individual_mask(env, trust.item(), device)
-        dist_individual = masked_categorical(
+        individual, individual_log_prob, individual_entropy = sample_from_logits_or_uniform(
             out["individual_logits"],
             individual_mask,
+            force_uniform,
         )
-        individual = dist_individual.sample()
 
-        log_prob = log_prob + dist_trust.log_prob(trust)
-        log_prob = log_prob + dist_individual.log_prob(individual)
-        entropy = entropy + dist_trust.entropy()
-        entropy = entropy + dist_individual.entropy()
+        log_prob = log_prob + trust_log_prob
+        log_prob = log_prob + individual_log_prob
+        entropy = entropy + trust_entropy
+        entropy = entropy + individual_entropy
 
         action["trust"] = trust
         action["individual"] = individual
@@ -267,7 +323,7 @@ def sample_action(model, env, obs, device):
     else:
         raise RuntimeError(f"Unknown action type: {action_type_int}")
 
-    return action, log_prob, entropy, out["value"], used_masks
+    return action, log_prob, entropy, out["value"], used_masks, force_uniform
 
 
 def action_dict_to_env_action(action):
@@ -311,7 +367,7 @@ def save_success_snapshot(env, snapshot, output_dir, update, snapshot_count):
         metadata.write(f"invalid_action: {snapshot['invalid_action']}\n")
 
 
-def train():
+def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interval=25):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     env = TaxEnv(
@@ -333,8 +389,6 @@ def train():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     buffer = RolloutBuffer()
 
-    total_updates = 1000
-    rollout_steps = 256
     snapshot_dir = Path("distressed_assets/rl_snapshots")
     max_success_images = 12
     saved_success_image_count = 0
@@ -347,18 +401,30 @@ def train():
         reward_by_action = {i: [] for i in range(num_action_types)}
         invalid_count = 0
         positive_reward_count = 0
+        success_count = 0
+        episode_count = 0
+        random_exploration_count = 0
         saved_success_image = False
+        random_action_prob = max(0.02, 0.25 * (0.995 ** update))
+
+        if update % log_interval == 0:
+            print(
+                f"update_start: {update}; "
+                f"random_action_prob: {random_action_prob:.4f}",
+                flush=True,
+            )
 
         for _ in range(rollout_steps):
             if not has_valid_action(env, device):
                 obs = reset_training_env(env, device)
 
             with torch.no_grad():
-                action, log_prob, entropy, value, masks = sample_action(
+                action, log_prob, entropy, value, masks, used_uniform = sample_action(
                     model=model,
                     env=env,
                     obs=obs,
                     device=device,
+                    random_action_prob=random_action_prob,
                 )
 
             env_action = action_dict_to_env_action(action)
@@ -369,11 +435,14 @@ def train():
             reward_by_action[env_action[0]].append(reward)
             invalid_count += int(info.get("invalid_action", False))
             positive_reward_count += int(reward > 0.0)
+            success_count += int(terminated)
+            random_exploration_count += int(used_uniform)
 
             if (
                 terminated
+                and save_snapshots
                 and not saved_success_image
-                and update % 25 == 0
+                and update % log_interval == 0
                 and saved_success_image_count < max_success_images
             ):
                 save_success_snapshot(
@@ -392,6 +461,11 @@ def train():
                 )
                 saved_success_image = True
                 saved_success_image_count += 1
+                print(
+                    "snapshot_saved: "
+                    f"{(snapshot_dir / f'success_structure_update_{update:04d}.png').resolve()}",
+                    flush=True,
+                )
 
             buffer.add(
                 obs=obs,
@@ -406,6 +480,7 @@ def train():
             cumulative_reward += reward
 
             if done:
+                episode_count += 1
                 obs = reset_training_env(env, device)
             else:
                 obs = next_obs
@@ -421,17 +496,22 @@ def train():
             rollout=buffer,
         )
 
-        if update % 25 == 0:
+        if update % log_interval == 0:
             print(
-                "update: "
+                "update_complete: "
                 f"{update}; loss: {loss}; "
                 f"cumulative_reward: {cumulative_reward}; "
                 f"invalid_count: {invalid_count}; "
-                f"positive_reward_count: {positive_reward_count}"
+                f"positive_reward_count: {positive_reward_count}; "
+                f"success_count: {success_count}; "
+                f"episode_count: {episode_count}; "
+                f"random_exploration_count: {random_exploration_count}; "
+                f"random_action_prob: {random_action_prob:.4f}",
+                flush=True,
             )
             for k, v in reward_by_action.items():
                 if v:
-                    print(k, sum(v) / len(v), len(v))
+                    print(ACTION_NAMES.get(k, k), sum(v) / len(v), len(v), flush=True)
 
 
 if __name__ == "__main__":

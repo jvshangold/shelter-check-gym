@@ -42,25 +42,6 @@ def make_entity_mask(env, device):
     return torch.tensor(env.get_entity_mask(), dtype=torch.bool, device=device)
 
 
-def make_rent_dst_mask(env, src_idx, device):
-    mask = []
-
-    for i in range(len(env.idx_to_entity)):
-        dst_id = env.idx_to_entity[i]
-
-        valid = True
-
-        if i == src_idx:
-            valid = False
-
-        if dst_id in env.state.licenses:
-            valid = False
-
-        mask.append(valid)
-
-    return torch.tensor(mask, dtype=torch.bool, device=device)
-
-
 def make_transfer_dst_mask(env, device):
     owner_idx = entity_to_idx(env, env.state.ip_owner)
 
@@ -345,7 +326,7 @@ def _write_snapshot_metadata(metadata_path, snapshot, update, snapshot_count):
 SNAPSHOT_DIR = Path(__file__).resolve().parents[1] / "rl_snapshots"
 
 
-def train():
+def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interval=25):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     env = TaxEnv(
@@ -367,8 +348,6 @@ def train():
 
     buffer = RolloutBuffer()
 
-    total_updates = 1000
-    rollout_steps = 256
     snapshot_dir = SNAPSHOT_DIR
     saved_snapshot_count = 0
 
@@ -380,6 +359,7 @@ def train():
 
         reward_by_action = {0: [], 1: [], 2: []}
         success_count = 0
+        episode_count = 0
         invalid_count = 0
         positive_reward_count = 0
         random_exploration_count = 0
@@ -473,6 +453,7 @@ def train():
             cumulative_reward += reward
 
             if done:
+                episode_count += 1
                 obs = reset_training_env(env, device)
                 current_episode_actions = []
             else:
@@ -491,7 +472,8 @@ def train():
 
         if (
             best_snapshot is not None
-            and update % 25 == 0
+            and update % log_interval == 0
+            and save_snapshots
         ):
             save_best_snapshot(
                 env=env,
@@ -506,11 +488,12 @@ def train():
             )
             saved_snapshot_count += 1
 
-        if update % 25 == 0:
+        if update % log_interval == 0:
             print(
                 f"update: {update}; loss: {loss}; "
                 f"cumulative_reward: {cumulative_reward}; "
                 f"success_count: {success_count}; "
+                f"episode_count: {episode_count}; "
                 f"invalid_count: {invalid_count}; "
                 f"positive_reward_count: {positive_reward_count}; "
                 f"random_exploration_count: {random_exploration_count}; "

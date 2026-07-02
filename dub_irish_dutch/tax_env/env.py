@@ -153,6 +153,9 @@ class TaxEnv(gym.Env):
             baseline_profit=baseline_profit,
             raw_tax_advantage=raw_tax_advantage,
         )
+        if invalid_action:
+            tax_advantage = 0.0
+
         normalized_tax_advantage = self.normalize_tax_advantage(tax_advantage)
         normalized_raw_tax_advantage = self.normalize_tax_advantage(raw_tax_advantage)
 
@@ -184,11 +187,7 @@ class TaxEnv(gym.Env):
             "normalized_raw_tax_advantage": normalized_raw_tax_advantage,
             "current_profit": current_profit,
             "baseline_profit": baseline_profit,
-            "loophole_gate_complete": self.has_completed_loophole_structure(
-                current_profit=current_profit,
-                baseline_profit=baseline_profit,
-                raw_tax_advantage=raw_tax_advantage,
-            ),
+            "loophole_gate_complete": tax_advantage > 0.0,
         }
 
         self.steps += 1
@@ -259,6 +258,9 @@ class TaxEnv(gym.Env):
             return False
 
         if licensee_id in self.state.licenses:
+            return False
+
+        if self.state.is_direct_parent_child(licensee_id, licensor_id):
             return False
 
         if not self.state.has_ip_rights(licensor_id):
@@ -375,62 +377,39 @@ class TaxEnv(gym.Env):
                 baseline_profit=baseline_profit,
             )
 
-        if not self.has_completed_loophole_structure(
-            current_profit=current_profit,
-            baseline_profit=baseline_profit,
-            raw_tax_advantage=raw_tax_advantage,
-        ):
+        if raw_tax_advantage <= baseline_profit * 0.03:
             return 0.0
 
-        return raw_tax_advantage
-
-    def has_completed_loophole_structure(
-        self,
-        current_profit: float | None = None,
-        baseline_profit: float | None = None,
-        raw_tax_advantage: float | None = None,
-    ) -> bool:
-        if current_profit is None:
-            current_profit = self.money_to_float(self.compute_profit())
-        if baseline_profit is None:
-            baseline_profit = self.compute_baseline_profit()
-        if raw_tax_advantage is None:
-            raw_tax_advantage = self.compute_raw_tax_advantage(
-                current_profit=current_profit,
-                baseline_profit=baseline_profit,
-            )
-
-        return (
-            raw_tax_advantage > baseline_profit * 0.03
-            and len(self.state.entities) >= 3
-            and self.has_completed_royalty_chain()
+        direct_ip_owner_profit = self.compute_direct_ip_owner_profit()
+        planned_tax_advantage = max(
+            0.0,
+            current_profit - max(baseline_profit, direct_ip_owner_profit),
         )
 
-    def has_completed_royalty_chain(self) -> bool:
-        for start_id, start_entity in self.state.entities.items():
-            if start_entity.company_type != "Operating":
+        if planned_tax_advantage <= baseline_profit * 0.03:
+            return 0.0
+
+        return planned_tax_advantage
+
+    def compute_direct_ip_owner_profit(self) -> float:
+        if self.state.ip_owner is None:
+            return self.money_to_float(self.compute_profit())
+
+        direct_licenses = {}
+        for entity_id, entity in self.state.entities.items():
+            if entity.company_type != "Operating":
                 continue
+            if entity_id == self.state.ip_owner:
+                continue
+            if self.state.has_ip_rights(entity_id):
+                direct_licenses[entity_id] = self.state.ip_owner
 
-            cur_id = start_id
-            visited = set()
-            chain_length = 0
-
-            while cur_id in self.state.licenses:
-                if cur_id in visited:
-                    break
-
-                visited.add(cur_id)
-                cur_id = self.state.licenses[cur_id]
-                chain_length += 1
-
-                if (
-                    chain_length >= 2
-                    and cur_id == self.state.ip_owner
-                    and self.state.entities[cur_id].company_type == "Holding"
-                ):
-                    return True
-
-        return False
+        original_licenses = self.state.licenses
+        try:
+            self.state.licenses = direct_licenses
+            return self.money_to_float(self.compute_profit())
+        finally:
+            self.state.licenses = original_licenses
 
     def compute_baseline_profit(self):
         baseline_profit = 0.0

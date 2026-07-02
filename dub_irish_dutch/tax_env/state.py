@@ -77,6 +77,8 @@ class WorldState:
             raise ValueError(f"Unknown licensor: {licensor}")
         if licensee == licensor:
             raise ValueError("A company cannot license IP from itself.")
+        if self.is_direct_parent_child(licensee, licensor):
+            raise ValueError("Direct parent-subsidiary IP licenses are not allowed.")
         if self.ip_owner is None:
             raise ValueError("No company currently owns the IP.")
 
@@ -94,6 +96,14 @@ class WorldState:
                 raise ValueError("This would create a licensing cycle")
 
         self.licenses[licensee] = licensor
+
+    def is_direct_parent_child(self, first_entity: str, second_entity: str) -> bool:
+        first = self.entities[first_entity]
+        second = self.entities[second_entity]
+        return (
+            first.parent_id == second_entity
+            or second.parent_id == first_entity
+        )
 
     def get_company_revenue(self, entity_id: str) -> float:
         if entity_id not in self.entities:

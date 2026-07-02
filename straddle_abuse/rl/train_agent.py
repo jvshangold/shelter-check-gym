@@ -167,6 +167,10 @@ def reset_training_env(env, device):
     return obs.to(device)
 
 
+def has_valid_action(env, device) -> bool:
+    return bool(make_action_mask(env, device).any().item())
+
+
 def describe_env_action(env, env_action):
     action_type, straddle_idx, fraction_idx, individual_idx = env_action
     action_name = ACTION_NAMES.get(action_type, f"unknown_{action_type}")
@@ -214,7 +218,7 @@ def save_best_snapshot(env, snapshot, output_dir, update, snapshot_count):
             metadata.write(f"{i}. {action_description}\n")
 
 
-def train():
+def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interval=25):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     env = TaxEnv(
@@ -237,8 +241,6 @@ def train():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     buffer = RolloutBuffer()
 
-    total_updates = 1000
-    rollout_steps = 256
     snapshot_dir = Path("straddle_abuse/rl_snapshots")
     max_snapshots = 15
     saved_snapshot_count = 0
@@ -252,19 +254,33 @@ def train():
         invalid_count = 0
         positive_reward_count = 0
         success_count = 0
+        episode_count = 0
         random_exploration_count = 0
         entropy_total = 0.0
         best_tax_advantage = 0.0
         best_snapshot = None
         current_episode_actions = []
+        random_action_prob = max(0.02, 0.25 * (0.995 ** update))
+
+        if update % log_interval == 0:
+            print(
+                f"update_start: {update}; "
+                f"random_action_prob: {random_action_prob:.4f}",
+                flush=True,
+            )
 
         for _ in range(rollout_steps):
+            if not has_valid_action(env, device):
+                obs = reset_training_env(env, device)
+                current_episode_actions = []
+
             with torch.no_grad():
                 action, log_prob, entropy, value, masks, used_random_exploration = sample_action(
                     model=model,
                     env=env,
                     obs=obs,
                     device=device,
+                    random_action_prob=random_action_prob,
                 )
 
             env_action = action_dict_to_env_action(action)
@@ -306,6 +322,7 @@ def train():
             cumulative_reward += reward
 
             if done:
+                episode_count += 1
                 obs = reset_training_env(env, device)
                 current_episode_actions = []
             else:
@@ -322,8 +339,12 @@ def train():
             rollout=buffer,
         )
 
-        if update % 25 == 0:
-            if best_snapshot is not None and saved_snapshot_count < max_snapshots:
+        if update % log_interval == 0:
+            if (
+                best_snapshot is not None
+                and save_snapshots
+                and saved_snapshot_count < max_snapshots
+            ):
                 save_best_snapshot(
                     env=env,
                     snapshot=best_snapshot,
@@ -332,22 +353,35 @@ def train():
                     snapshot_count=saved_snapshot_count,
                 )
                 saved_snapshot_count += 1
+                print(
+                    "snapshot_saved: "
+                    f"{(snapshot_dir / f'best_structure_update_{update:04d}.png').resolve()}",
+                    flush=True,
+                )
 
             print(
-                "update: "
+                "update_complete: "
                 f"{update}; loss: {loss}; "
                 f"cumulative_reward: {cumulative_reward}; "
                 f"invalid_count: {invalid_count}; "
                 f"positive_reward_count: {positive_reward_count}; "
                 f"success_count: {success_count}; "
+                f"episode_count: {episode_count}; "
                 f"best_tax_advantage: {best_tax_advantage}; "
                 f"avg_entropy: {entropy_total / rollout_steps}; "
                 f"random_exploration_count: {random_exploration_count}; "
-                f"saved_snapshots: {saved_snapshot_count}"
+                f"saved_snapshots: {saved_snapshot_count}; "
+                f"random_action_prob: {random_action_prob:.4f}",
+                flush=True,
             )
             for action_type, rewards in reward_by_action.items():
                 if rewards:
-                    print(action_type, sum(rewards) / len(rewards), len(rewards))
+                    print(
+                        ACTION_NAMES.get(action_type, action_type),
+                        sum(rewards) / len(rewards),
+                        len(rewards),
+                        flush=True,
+                    )
 
 
 if __name__ == "__main__":

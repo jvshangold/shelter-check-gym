@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from typing import Dict
 
 import gymnasium as gym
@@ -8,8 +9,15 @@ from graphviz import Digraph
 from .render import build_graph
 from .state import StraddleLegKind, WorldState
 
-sys.path.append("straddle_abuse/formalizations/_target/straddle_abuse_tax_rules")
-sys.path.append("straddle_abuse/formalizations/_build/libcatala/python")
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+CATALA_TARGET_ROOT = PACKAGE_ROOT / "formalizations" / "_target" / "straddle_abuse_tax_rules"
+CATALA_TARGET_PYTHON = CATALA_TARGET_ROOT / "python"
+CATALA_STDLIB_PYTHON = PACKAGE_ROOT / "formalizations" / "_build" / "libcatala" / "python"
+
+for path in (CATALA_TARGET_ROOT, CATALA_TARGET_PYTHON, CATALA_STDLIB_PYTHON):
+    path_text = str(path)
+    if path_text not in sys.path:
+        sys.path.append(path_text)
 
 from python import StraddleAbuseTaxModel as TaxModel
 from python import catala_runtime

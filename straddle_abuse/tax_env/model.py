@@ -18,8 +18,6 @@ class GNN(torch.nn.Module):
         self.conv1 = HeteroConv({
             ("individual", "invested_in", "ctf"): SAGEConv((-1, -1), hidden_channels),
             ("ctf", "has_investor", "individual"): SAGEConv((-1, -1), hidden_channels),
-            ("individual", "not_invested_in", "ctf"): SAGEConv((-1, -1), hidden_channels),
-            ("ctf", "missing_investor", "individual"): SAGEConv((-1, -1), hidden_channels),
             ("ctf", "owns_leg", "leg"): SAGEConv((-1, -1), hidden_channels),
             ("leg", "held_by_ctf", "ctf"): SAGEConv((-1, -1), hidden_channels),
             ("leg", "offsets", "leg"): SAGEConv((-1, -1), hidden_channels),
@@ -28,8 +26,6 @@ class GNN(torch.nn.Module):
         self.conv2 = HeteroConv({
             ("individual", "invested_in", "ctf"): SAGEConv((-1, -1), out_channels),
             ("ctf", "has_investor", "individual"): SAGEConv((-1, -1), out_channels),
-            ("individual", "not_invested_in", "ctf"): SAGEConv((-1, -1), out_channels),
-            ("ctf", "missing_investor", "individual"): SAGEConv((-1, -1), out_channels),
             ("ctf", "owns_leg", "leg"): SAGEConv((-1, -1), out_channels),
             ("leg", "held_by_ctf", "ctf"): SAGEConv((-1, -1), out_channels),
             ("leg", "offsets", "leg"): SAGEConv((-1, -1), out_channels),
