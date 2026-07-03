@@ -1,0 +1,33 @@
+{
+  "runs": [
+    {
+      "loophole": "straddle_abuse",
+      "run": 0,
+      "seed": 1729,
+      "discovered": false,
+      "discovery_update": null,
+      "steps_to_first_discovery": null,
+      "post_discovery_avg_reward_per_episode": null,
+      "tail_avg_reward_per_episode": -0.19400000000000003,
+      "tail_success_rate": 0.0,
+      "tail_reward_stddev": 0.06308724118235004,
+      "tail_success_rate_stddev": 0.0,
+      "updates_logged": 5
+    }
+  ],
+  "summary": [
+    {
+      "loophole": "straddle_abuse",
+      "runs": 1,
+      "discovery_rate": 0.0,
+      "avg_steps_to_first_discovery": null,
+      "steps_to_first_discovery_stddev": null,
+      "steps_to_first_discovery_cv": null,
+      "avg_tail_reward_per_episode": -0.19400000000000003,
+      "tail_reward_stddev_across_runs": null,
+      "tail_reward_cv_across_runs": null,
+      "avg_tail_success_rate": 0.0,
+      "tail_success_rate_stddev_across_runs": null
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+avg_steps_to_first_discovery,avg_tail_reward_per_episode,avg_tail_success_rate,discovery_rate,loophole,runs,steps_to_first_discovery_cv,steps_to_first_discovery_stddev,tail_reward_cv_across_runs,tail_reward_stddev_across_runs,tail_success_rate_stddev_across_runs
+,-0.19400000000000003,0.0,0.0,straddle_abuse,1,,,,,
