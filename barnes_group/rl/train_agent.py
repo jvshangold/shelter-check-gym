@@ -1,4 +1,5 @@
 import copy
+import os
 from pathlib import Path
 
 import torch
@@ -19,6 +20,17 @@ ACTION_NAMES = {
     TRANSFER_CASH: "transfer_cash",
     CONTRIBUTE_FOR_STOCK: "contribute_for_stock",
 }
+
+
+def resolve_device():
+    requested = os.environ.get("SHELTER_CHECK_DEVICE", "auto").strip().lower()
+    if requested == "cpu":
+        return torch.device("cpu")
+    if requested == "cuda" and torch.cuda.is_available():
+        return torch.device("cuda")
+    if requested == "cuda":
+        print("requested_device_unavailable: cuda; using cpu", flush=True)
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def make_action_mask(env, device):
@@ -516,7 +528,7 @@ def save_best_snapshot(env, snapshot, output_dir, update, snapshot_count):
 
 
 def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interval=25):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = resolve_device()
 
     env = TaxEnv(
         MAX_CORPORATIONS=5,

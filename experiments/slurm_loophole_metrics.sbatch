@@ -25,15 +25,25 @@ RUNS="${RUNS:-5}"
 UPDATES="${UPDATES:-500}"
 ROLLOUT_STEPS="${ROLLOUT_STEPS:-256}"
 TAIL_UPDATES="${TAIL_UPDATES:-50}"
+SHELTER_CHECK_DEVICE="${SHELTER_CHECK_DEVICE:-cpu}"
+STREAM_TRAIN_LOGS="${STREAM_TRAIN_LOGS:-1}"
 LOOPHOLES="${LOOPHOLES:-barnes_group distressed_assets dub_irish_dutch partnership_disguised_sale straddle_abuse subsidiary_stock_comp}"
+export SHELTER_CHECK_DEVICE
 
 echo "Job ${SLURM_JOB_ID:-local} started on $(hostname) at $(date)"
 echo "Output directory: ${OUTPUT_DIR}"
 echo "Loopholes: ${LOOPHOLES}"
 echo "Runs: ${RUNS}; updates: ${UPDATES}; rollout steps: ${ROLLOUT_STEPS}; tail updates: ${TAIL_UPDATES}"
+echo "SHELTER_CHECK_DEVICE: ${SHELTER_CHECK_DEVICE}; stream train logs: ${STREAM_TRAIN_LOGS}"
 
 nvidia-smi
 python -c "import torch; print('torch', torch.__version__); print('cuda_available', torch.cuda.is_available()); print('cuda', torch.version.cuda)"
+free -h || true
+
+STREAM_ARGS=()
+if [[ "${STREAM_TRAIN_LOGS}" == "1" ]]; then
+  STREAM_ARGS+=(--stream-train-logs)
+fi
 
 python experiments/loophole_learning_metrics.py \
   --loopholes ${LOOPHOLES} \
@@ -41,6 +51,7 @@ python experiments/loophole_learning_metrics.py \
   --updates "${UPDATES}" \
   --rollout-steps "${ROLLOUT_STEPS}" \
   --tail-updates "${TAIL_UPDATES}" \
-  --output-dir "${OUTPUT_DIR}"
+  --output-dir "${OUTPUT_DIR}" \
+  "${STREAM_ARGS[@]}"
 
 echo "Job finished at $(date)"

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import csv
+from datetime import datetime
 import importlib
 import io
 import json
@@ -18,6 +19,7 @@ import random
 import re
 import statistics
 import sys
+import time
 from pathlib import Path
 
 
@@ -36,6 +38,17 @@ DEFAULT_LOOPHOLES = [
 
 UPDATE_RE = re.compile(r"^(?:update_complete:|update:)\s*(?P<update>\d+);")
 PAIR_RE = re.compile(r"(?P<key>[a-zA-Z_]+):\s*(?P<value>[^;]+)")
+
+
+class TeeCapture(io.StringIO):
+    def __init__(self, stream):
+        super().__init__()
+        self.stream = stream
+
+    def write(self, value):
+        self.stream.write(value)
+        self.stream.flush()
+        return super().write(value)
 
 
 def parse_number(value: str):
@@ -97,7 +110,8 @@ def run_probe(loophole: str, run_index: int, seed: int, args) -> dict:
     seed_everything(seed)
     module = importlib.import_module(f"{loophole}.rl.train_agent")
 
-    captured = io.StringIO()
+    captured = TeeCapture(sys.stdout) if args.stream_train_logs else io.StringIO()
+    started_at = time.perf_counter()
     with contextlib.redirect_stdout(captured):
         module.train(
             total_updates=args.updates,
@@ -105,6 +119,7 @@ def run_probe(loophole: str, run_index: int, seed: int, args) -> dict:
             save_snapshots=False,
             log_interval=1,
         )
+    elapsed_seconds = time.perf_counter() - started_at
 
     rows = parse_update_rows(captured.getvalue(), rollout_steps=args.rollout_steps)
     discovery_row = next((row for row in rows if int(row.get("success_count", 0)) > 0), None)
@@ -132,6 +147,7 @@ def run_probe(loophole: str, run_index: int, seed: int, args) -> dict:
         "tail_reward_stddev": stdev(row["avg_reward_per_episode"] for row in tail_rows),
         "tail_success_rate_stddev": stdev(row["success_rate"] for row in tail_rows),
         "updates_logged": len(rows),
+        "elapsed_seconds": elapsed_seconds,
     }
 
 
@@ -153,6 +169,10 @@ def coefficient_of_variation(values) -> float | None:
     if avg == 0:
         return None
     return statistics.stdev(values) / abs(avg)
+
+
+def timestamp() -> str:
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def summarize(results: list[dict]) -> list[dict]:
@@ -240,6 +260,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tail-updates", type=int, default=50)
     parser.add_argument("--seed", type=int, default=1729)
     parser.add_argument(
+        "--stream-train-logs",
+        action="store_true",
+        help="Mirror each trainer's update logs to stdout while still parsing them.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("experiments/results/loophole_learning_metrics"),
@@ -253,8 +278,18 @@ def main() -> None:
     for loophole in args.loopholes:
         for run_index in range(args.runs):
             seed = args.seed + run_index
-            print(f"running {loophole} run={run_index} seed={seed}", flush=True)
-            results.append(run_probe(loophole, run_index, seed, args))
+            print(
+                f"{timestamp()} running {loophole} run={run_index} seed={seed}",
+                flush=True,
+            )
+            result = run_probe(loophole, run_index, seed, args)
+            print(
+                f"{timestamp()} completed {loophole} run={run_index} "
+                f"elapsed_seconds={result['elapsed_seconds']:.2f} "
+                f"updates_logged={result['updates_logged']}",
+                flush=True,
+            )
+            results.append(result)
 
     summaries = summarize(results)
     args.output_dir.mkdir(parents=True, exist_ok=True)

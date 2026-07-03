@@ -1,4 +1,5 @@
 import copy
+import os
 from pathlib import Path
 
 import torch
@@ -7,6 +8,17 @@ from dub_irish_dutch.tax_env.env import TaxEnv
 from dub_irish_dutch.rl.ppo import masked_categorical, ppo_update
 from dub_irish_dutch.rl.rollout import RolloutBuffer
 from dub_irish_dutch.rl.model import PolicyValueNet
+
+
+def resolve_device():
+    requested = os.environ.get("SHELTER_CHECK_DEVICE", "auto").strip().lower()
+    if requested == "cpu":
+        return torch.device("cpu")
+    if requested == "cuda" and torch.cuda.is_available():
+        return torch.device("cuda")
+    if requested == "cuda":
+        print("requested_device_unavailable: cuda; using cpu", flush=True)
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def entity_to_idx(env, entity_id):
@@ -327,7 +339,7 @@ SNAPSHOT_DIR = Path(__file__).resolve().parents[1] / "rl_snapshots"
 
 
 def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interval=25):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = resolve_device()
 
     env = TaxEnv(
         MAX_ENTITIES=4,
