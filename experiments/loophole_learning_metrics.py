@@ -254,10 +254,10 @@ def write_plots(output_dir: Path, summaries: list[dict]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--loopholes", nargs="+", default=DEFAULT_LOOPHOLES)
-    parser.add_argument("--runs", type=int, default=5)
-    parser.add_argument("--updates", type=int, default=500)
-    parser.add_argument("--rollout-steps", type=int, default=256)
-    parser.add_argument("--tail-updates", type=int, default=50)
+    parser.add_argument("--runs", type=int, default=2)
+    parser.add_argument("--updates", type=int, default=100)
+    parser.add_argument("--rollout-steps", type=int, default=128)
+    parser.add_argument("--tail-updates", type=int, default=20)
     parser.add_argument("--seed", type=int, default=1729)
     parser.add_argument(
         "--stream-train-logs",
