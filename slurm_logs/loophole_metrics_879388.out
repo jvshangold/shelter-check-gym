@@ -1,0 +1,33 @@
+Job 879388 started on node16 at Thu Jul  2 15:00:12 CEST 2026
+Output directory: experiments/results/loophole_learning_metrics_879388_20260702_150012
+Loopholes: barnes_group distressed_assets dub_irish_dutch partnership_disguised_sale straddle_abuse subsidiary_stock_comp
+Runs: 5; updates: 500; rollout steps: 256; tail updates: 50
+Thu Jul  2 15:00:12 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.126.18             Driver Version: 580.126.18     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla P100-PCIE-16GB           Off |   00000000:D8:00.0 Off |                    0 |
+| N/A   31C    P0             25W /  250W |       0MiB /  16384MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+torch 2.5.1+cu121
+cuda_available True
+cuda 12.1
+running barnes_group run=0 seed=1729
+running barnes_group run=1 seed=1730
+running barnes_group run=2 seed=1731
+running barnes_group run=3 seed=1732
+running barnes_group run=4 seed=1733
+running distressed_assets run=0 seed=1729

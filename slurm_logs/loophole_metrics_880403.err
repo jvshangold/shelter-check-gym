@@ -1,0 +1,7 @@
+Python 3.11.13 loaded
+Commands: python, python3, pip, pip3
+Pip cache: /tmp/pip_cache_shangold
+/home/infres/shangold/shelter-check-gym/partnership_disguised_sale/tax_env/model.py:21: UserWarning: There exist node types ({'individual'}) whose representations do not get updated during message passing as they do not occur as destination type in any edge type. This may lead to unexpected behavior.
+  self.conv1 = HeteroConv({
+/home/infres/shangold/shelter-check-gym/partnership_disguised_sale/tax_env/model.py:31: UserWarning: There exist node types ({'individual'}) whose representations do not get updated during message passing as they do not occur as destination type in any edge type. This may lead to unexpected behavior.
+  self.conv2 = HeteroConv({

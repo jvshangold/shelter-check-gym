@@ -1,0 +1,17 @@
+Python 3.11.13 loaded
+Commands: python, python3, pip, pip3
+Pip cache: /tmp/pip_cache_shangold
+Traceback (most recent call last):
+  File "/home/infres/shangold/shelter-check-gym/experiments/loophole_learning_metrics.py", line 270, in <module>
+    main()
+  File "/home/infres/shangold/shelter-check-gym/experiments/loophole_learning_metrics.py", line 257, in main
+    results.append(run_probe(loophole, run_index, seed, args))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/infres/shangold/shelter-check-gym/experiments/loophole_learning_metrics.py", line 102, in run_probe
+    module.train(
+  File "/home/infres/shangold/shelter-check-gym/straddle_abuse/rl/train_agent.py", line 334, in train
+    buffer.compute_advantages(last_value=last_value)
+  File "/home/infres/shangold/shelter-check-gym/straddle_abuse/rl/rollout.py", line 46, in compute_advantages
+    self.returns = (advantages + values).detach()
+                    ~~~~~~~~~~~^~~~~~~~
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!

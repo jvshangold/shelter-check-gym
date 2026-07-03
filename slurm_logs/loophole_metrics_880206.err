@@ -1,0 +1,4 @@
+Python 3.11.13 loaded
+Commands: python, python3, pip, pip3
+Pip cache: /tmp/pip_cache_shangold
+slurmstepd: error: *** JOB 880206 ON node16 CANCELLED AT 2026-07-03T13:59:46 ***

@@ -1,0 +1,12 @@
+name: shelter-check-gym-py312
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - ipykernel
+  - numpy
+  - matplotlib
+  - pandas
+  - pytest
+  - networkx
