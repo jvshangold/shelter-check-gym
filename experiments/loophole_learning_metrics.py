@@ -307,6 +307,18 @@ def median_discovery_steps_by_loophole(results: list[dict]) -> dict[str, float]:
     return medians
 
 
+def max_reward_by_loophole(update_rows: list[dict]) -> dict[str, float]:
+    max_rewards = {}
+    for row in update_rows:
+        reward = row.get("avg_reward_per_episode")
+        if not isinstance(reward, (int, float)):
+            continue
+        loophole = row["loophole"]
+        if loophole not in max_rewards or reward > max_rewards[loophole]:
+            max_rewards[loophole] = reward
+    return max_rewards
+
+
 def write_reward_overlay_plot(
     output_dir: Path,
     results: list[dict],
@@ -323,6 +335,7 @@ def write_reward_overlay_plot(
 
     plt.figure(figsize=(12, 6))
     median_lines = median_discovery_steps_by_loophole(results)
+    max_rewards = max_reward_by_loophole(update_rows)
     for loophole, result in selected.items():
         rows = [
             row for row in update_rows
@@ -331,11 +344,13 @@ def write_reward_overlay_plot(
         if not rows:
             continue
         rows.sort(key=lambda row: row["total_steps"])
+        max_reward = max_rewards.get(loophole, 0.0)
+        reward_scale = max_reward if max_reward > 0.0 else 1.0
         plt.plot(
             [row["total_steps"] for row in rows],
-            [row["avg_reward_per_episode"] for row in rows],
+            [row["avg_reward_per_episode"] / reward_scale for row in rows],
             linewidth=2,
-            label=f"{loophole} run={result['run']}",
+            label=f"{loophole} run={result['run']} max={max_reward:.3g}",
         )
 
     for i, step in enumerate(sorted(set(median_lines.values()))):
@@ -349,11 +364,14 @@ def write_reward_overlay_plot(
         )
 
     plt.xlabel("Environment steps")
-    plt.ylabel("Reward per episode")
-    plt.title("Representative reward curves by loophole")
+    plt.ylabel("Reward per episode / max reward for loophole")
+    plt.title("Representative normalized reward curves by loophole")
     plt.legend()
     plt.tight_layout()
-    plt.savefig(output_dir / "representative_reward_per_episode_overlay.png", dpi=160)
+    plt.savefig(
+        output_dir / "representative_normalized_reward_per_episode_overlay.png",
+        dpi=160,
+    )
     plt.close()
 
 
