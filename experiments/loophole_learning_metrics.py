@@ -106,7 +106,7 @@ def seed_everything(seed: int) -> None:
         pass
 
 
-def run_probe(loophole: str, run_index: int, seed: int, args) -> dict:
+def run_probe(loophole: str, run_index: int, seed: int, args) -> tuple[dict, list[dict]]:
     seed_everything(seed)
     module = importlib.import_module(f"{loophole}.rl.train_agent")
 
@@ -122,6 +122,11 @@ def run_probe(loophole: str, run_index: int, seed: int, args) -> dict:
     elapsed_seconds = time.perf_counter() - started_at
 
     rows = parse_update_rows(captured.getvalue(), rollout_steps=args.rollout_steps)
+    for row in rows:
+        row["loophole"] = loophole
+        row["run"] = run_index
+        row["seed"] = seed
+
     discovery_row = next((row for row in rows if int(row.get("success_count", 0)) > 0), None)
     post_discovery_rows = (
         [row for row in rows if row["update"] >= discovery_row["update"]]
@@ -148,7 +153,7 @@ def run_probe(loophole: str, run_index: int, seed: int, args) -> dict:
         "tail_success_rate_stddev": stdev(row["success_rate"] for row in tail_rows),
         "updates_logged": len(rows),
         "elapsed_seconds": elapsed_seconds,
-    }
+    }, rows
 
 
 def mean(values) -> float | None:
@@ -202,6 +207,11 @@ def summarize(results: list[dict]) -> list[dict]:
     return summaries
 
 
+def median(values) -> float | None:
+    values = [float(value) for value in values if value is not None]
+    return statistics.median(values) if values else None
+
+
 def write_csv(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = sorted({key for row in rows for key in row})
@@ -211,7 +221,148 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def write_plots(output_dir: Path, summaries: list[dict]) -> None:
+def write_discovery_boxplot(output_dir: Path, results: list[dict]) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+
+    discovered_by_loophole = {}
+    for result in results:
+        if result["steps_to_first_discovery"] is None:
+            continue
+        discovered_by_loophole.setdefault(result["loophole"], []).append(
+            result["steps_to_first_discovery"]
+        )
+
+    ordered = sorted(
+        discovered_by_loophole,
+        key=lambda loophole: statistics.median(discovered_by_loophole[loophole]),
+    )
+    if not ordered:
+        return
+
+    labels = []
+    values = []
+    means = []
+    for loophole in ordered:
+        steps = discovered_by_loophole[loophole]
+        labels.append(
+            f"{loophole}\nmean={statistics.fmean(steps):.0f}\nstd={stdev(steps) or 0.0:.0f}"
+        )
+        values.append(steps)
+        means.append(statistics.fmean(steps))
+
+    plt.figure(figsize=(12, 6))
+    plt.boxplot(
+        values,
+        tick_labels=labels,
+        showmeans=True,
+        meanline=True,
+        whis=(0, 100),
+    )
+    plt.plot(range(1, len(means) + 1), means, "o", color="black", label="Mean")
+    plt.ylabel("Steps to first discovery")
+    plt.title("Discovery time distribution by loophole")
+    plt.xticks(rotation=20, ha="right")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_dir / "steps_to_first_discovery_boxplot.png", dpi=160)
+    plt.close()
+
+
+def representative_results(results: list[dict]) -> dict[str, dict]:
+    selected = {}
+    for loophole in sorted({result["loophole"] for result in results}):
+        group = [result for result in results if result["loophole"] == loophole]
+        discovered = [
+            result for result in group
+            if result["steps_to_first_discovery"] is not None
+        ]
+        if not discovered:
+            selected[loophole] = group[0]
+            continue
+
+        median_steps = statistics.median(
+            result["steps_to_first_discovery"] for result in discovered
+        )
+        selected[loophole] = min(
+            discovered,
+            key=lambda result: abs(result["steps_to_first_discovery"] - median_steps),
+        )
+    return selected
+
+
+def median_discovery_steps_by_loophole(results: list[dict]) -> dict[str, float]:
+    medians = {}
+    for loophole in sorted({result["loophole"] for result in results}):
+        steps = [
+            result["steps_to_first_discovery"]
+            for result in results
+            if result["loophole"] == loophole
+            and result["steps_to_first_discovery"] is not None
+        ]
+        if steps:
+            medians[loophole] = statistics.median(steps)
+    return medians
+
+
+def write_reward_overlay_plot(
+    output_dir: Path,
+    results: list[dict],
+    update_rows: list[dict],
+) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return
+
+    selected = representative_results(results)
+    if not selected:
+        return
+
+    plt.figure(figsize=(12, 6))
+    median_lines = median_discovery_steps_by_loophole(results)
+    for loophole, result in selected.items():
+        rows = [
+            row for row in update_rows
+            if row["loophole"] == loophole and row["run"] == result["run"]
+        ]
+        if not rows:
+            continue
+        rows.sort(key=lambda row: row["total_steps"])
+        plt.plot(
+            [row["total_steps"] for row in rows],
+            [row["avg_reward_per_episode"] for row in rows],
+            linewidth=2,
+            label=f"{loophole} run={result['run']}",
+        )
+
+    for i, step in enumerate(sorted(set(median_lines.values()))):
+        plt.axvline(
+            step,
+            color="red",
+            linestyle="--",
+            linewidth=1,
+            alpha=0.35,
+            label="Median discovery step" if i == 0 else None,
+        )
+
+    plt.xlabel("Environment steps")
+    plt.ylabel("Reward per episode")
+    plt.title("Representative reward curves by loophole")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_dir / "representative_reward_per_episode_overlay.png", dpi=160)
+    plt.close()
+
+
+def write_plots(
+    output_dir: Path,
+    summaries: list[dict],
+    results: list[dict],
+    update_rows: list[dict],
+) -> None:
     os.environ.setdefault("MPLCONFIGDIR", str(output_dir / ".matplotlib"))
     os.environ.setdefault("XDG_CACHE_HOME", str(output_dir / ".cache"))
     try:
@@ -250,6 +401,9 @@ def write_plots(output_dir: Path, summaries: list[dict]) -> None:
         plt.savefig(output_dir / filename, dpi=160)
         plt.close()
 
+    write_discovery_boxplot(output_dir, results)
+    write_reward_overlay_plot(output_dir, results, update_rows)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -275,6 +429,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     results = []
+    update_rows = []
     for loophole in args.loopholes:
         for run_index in range(args.runs):
             seed = args.seed + run_index
@@ -282,7 +437,7 @@ def main() -> None:
                 f"{timestamp()} running {loophole} run={run_index} seed={seed}",
                 flush=True,
             )
-            result = run_probe(loophole, run_index, seed, args)
+            result, run_update_rows = run_probe(loophole, run_index, seed, args)
             print(
                 f"{timestamp()} completed {loophole} run={run_index} "
                 f"elapsed_seconds={result['elapsed_seconds']:.2f} "
@@ -290,14 +445,24 @@ def main() -> None:
                 flush=True,
             )
             results.append(result)
+            update_rows.extend(run_update_rows)
 
     summaries = summarize(results)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.output_dir / "runs.csv", results)
     write_csv(args.output_dir / "summary.csv", summaries)
+    write_csv(args.output_dir / "update_metrics.csv", update_rows)
     with (args.output_dir / "summary.json").open("w") as handle:
-        json.dump({"runs": results, "summary": summaries}, handle, indent=2)
-    write_plots(args.output_dir, summaries)
+        json.dump(
+            {
+                "runs": results,
+                "summary": summaries,
+                "update_metrics": update_rows,
+            },
+            handle,
+            indent=2,
+        )
+    write_plots(args.output_dir, summaries, results, update_rows)
     print(f"wrote metrics to {args.output_dir.resolve()}", flush=True)
 
 
