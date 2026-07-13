@@ -1,0 +1,2 @@
+avg_steps_to_first_discovery,avg_tail_reward_per_episode,avg_tail_success_rate,discovery_rate,loophole,runs,steps_to_first_discovery_cv,steps_to_first_discovery_stddev,tail_reward_cv_across_runs,tail_reward_stddev_across_runs,tail_success_rate_stddev_across_runs
+768.0,0.2425140306381154,0.615,1.0,barnes_group,10,1.3123346456686351,1007.8730078735118,3.7933117489884967,0.9199313217141194,0.49780071871739556

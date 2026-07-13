@@ -1,0 +1,63 @@
+Job 892201 started on node18 at Fri Jul 10 16:28:34 CEST 2026
+Output directory: experiments/results/loophole_learning_metrics_892201_20260710_162834
+Loopholes: barnes_group distressed_assets dub_irish_dutch partnership_disguised_sale straddle_abuse subsidiary_stock_comp
+Runs: 2; updates: 100; rollout steps: 128; tail updates: 20
+SHELTER_CHECK_DEVICE: cpu; stream train logs: 1
+Fri Jul 10 16:28:34 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.126.18             Driver Version: 580.126.18     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  Tesla P100-PCIE-16GB           Off |   00000000:AF:00.0 Off |                    0 |
+| N/A   28C    P0             27W /  250W |       0MiB /  16384MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+torch 2.5.1+cu121
+cuda_available True
+cuda 12.1
+               total        used        free      shared  buff/cache   available
+Mem:            62Gi        11Gi        14Gi        56Mi        36Gi        50Gi
+Swap:           31Gi       164Mi        31Gi
+2026-07-10T16:28:43 running barnes_group run=0 seed=1729
+update_start: 0; random_action_prob: 0.2500
+update_complete: 0; loss: 1.270901660124461; cumulative_reward: -0.8000000000000005; invalid_count: 0; positive_reward_count: 0; success_count: 0; episode_count: 0; random_exploration_count: 38; avg_entropy: 0.9448; best_tax_advantage: 0.0; random_action_prob: 0.2500
+make_subcorporation -0.01 75
+transfer_cash -0.001 10
+contribute_for_stock -0.0009302325581395349 43
+update_start: 1; random_action_prob: 0.2487
+update_complete: 1; loss: 0.07948802784085274; cumulative_reward: -0.7600000000000005; invalid_count: 0; positive_reward_count: 0; success_count: 0; episode_count: 0; random_exploration_count: 33; avg_entropy: 1.1255; best_tax_advantage: 0.0; random_action_prob: 0.2487
+make_subcorporation -0.01 75
+transfer_cash 0.0 27
+contribute_for_stock -0.0003846153846153846 26
+update_start: 2; random_action_prob: 0.2475
+update_complete: 2; loss: 0.25277164950966835; cumulative_reward: -0.7700000000000005; invalid_count: 0; positive_reward_count: 0; success_count: 0; episode_count: 0; random_exploration_count: 38; avg_entropy: 1.1391; best_tax_advantage: 0.0; random_action_prob: 0.2475
+make_subcorporation -0.009864864864864865 74
+transfer_cash -0.0007142857142857143 28
+contribute_for_stock -0.0007692307692307692 26
+update_start: 3; random_action_prob: 0.2463
+update_complete: 3; loss: 0.030676467965046566; cumulative_reward: -0.7700000000000005; invalid_count: 0; positive_reward_count: 0; success_count: 0; episode_count: 0; random_exploration_count: 35; avg_entropy: 1.1102; best_tax_advantage: 0.0; random_action_prob: 0.2463
+make_subcorporation -0.009864864864864865 74
+transfer_cash -0.0011111111111111111 18
+contribute_for_stock -0.0005555555555555556 36
+update_start: 4; random_action_prob: 0.2450
+update_complete: 4; loss: 0.07386975487073262; cumulative_reward: -0.7700000000000005; invalid_count: 0; positive_reward_count: 0; success_count: 0; episode_count: 0; random_exploration_count: 35; avg_entropy: 1.2289; best_tax_advantage: 0.0; random_action_prob: 0.2450
+make_subcorporation -0.009868421052631578 76
+transfer_cash -0.0003846153846153846 26
+contribute_for_stock -0.0003846153846153846 26
+update_start: 5; random_action_prob: 0.2438
+update_complete: 5; loss: 0.01570882151524226; cumulative_reward: -0.7500000000000004; invalid_count: 0; positive_reward_count: 0; success_count: 0; episode_count: 0; random_exploration_count: 30; avg_entropy: 1.1838; best_tax_advantage: 0.0; random_action_prob: 0.2438
+make_subcorporation -0.01 75
+transfer_cash 0.0 26
+contribute_for_stock 0.0 27
+update_start: 6; random_action_prob: 0.2426
