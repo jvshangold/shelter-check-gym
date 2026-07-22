@@ -58,6 +58,7 @@ def write_discovery_gaussians(
     result_dir: Path,
     output_path: Path,
     points: int,
+    max_steps: int,
 ) -> None:
     runs_path = result_dir / "runs.csv"
     if not runs_path.exists():
@@ -67,11 +68,7 @@ def write_discovery_gaussians(
     if not distributions:
         raise SystemExit("No discovered runs with steps_to_first_discovery found.")
 
-    max_x = max(
-        max(row["steps"]) + 3.0 * row["stddev"]
-        for row in distributions
-    )
-    max_x = max(max_x, 1.0)
+    max_x = max(float(max_steps), 1.0)
     x_values = [
         max_x * i / max(points - 1, 1)
         for i in range(points)
@@ -111,7 +108,8 @@ def write_discovery_gaussians(
 
     plt.xlabel("Steps to first discovery")
     plt.ylabel("Relative density")
-    plt.title("Discovery-time distributions by loophole")
+    plt.xlim(0, max_x)
+    plt.title(f"Discovery-time distributions by loophole, clipped at {max_steps} steps")
     plt.legend(fontsize=8)
     plt.tight_layout()
     plt.savefig(output_path, dpi=160)
@@ -136,12 +134,18 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--points", type=int, default=600)
+    parser.add_argument("--max-steps", type=int, default=6000)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    write_discovery_gaussians(args.result_dir, args.output_path, args.points)
+    write_discovery_gaussians(
+        args.result_dir,
+        args.output_path,
+        args.points,
+        args.max_steps,
+    )
     print(f"wrote discovery Gaussian plot to {args.output_path.resolve()}")
 
 
