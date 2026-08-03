@@ -8,3 +8,7 @@ __pycache__/
 .DS_Store
 _build
 */rl_snapshots/*
+experiments/plot_*.py
+experiments/refresh_paper_figures.py
+experiments/results/**/.cache/
+experiments/results/**/.matplotlib/
