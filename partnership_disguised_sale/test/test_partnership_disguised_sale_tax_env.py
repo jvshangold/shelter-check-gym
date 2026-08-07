@@ -8,6 +8,7 @@ from partnership_disguised_sale.tax_env.env import (
     TaxEnv,
     TaxModel,
 )
+from partnership_disguised_sale.tax_env.hard_env import HardTaxEnv
 from partnership_disguised_sale.tax_env.state import CashSource, OwnerType, WorldState
 
 
@@ -116,6 +117,62 @@ def test_env_reaches_success_threshold_with_four_actions():
     assert tax.recognized_gain == 10.0
     assert tax.deferred_gain == 90.0
     assert tax.tax_savings == 18.0
+
+
+def test_hard_env_reset_has_target_asset_and_decoys():
+    env = HardTaxEnv()
+    env.reset()
+
+    assert set(env.state.individuals) == {"T", "Buyer"}
+    assert set(env.state.partnerships["P"].partner_ids) == {"T", "Buyer"}
+    assert list(env.state.assets) == [
+        "appreciated_asset",
+        "neutral_asset",
+        "loss_asset",
+        "buyer_asset",
+    ]
+    assert env.state.assets["appreciated_asset"].owner_id == "T"
+    assert env.state.assets["appreciated_asset"].built_in_gain == 100.0
+    assert env.state.assets["neutral_asset"].built_in_gain == 0.0
+    assert env.state.assets["loss_asset"].built_in_gain == 0.0
+    assert env.state.assets["buyer_asset"].owner_id == "Buyer"
+    assert env.state.individual_cash("Buyer") == 100.0
+    assert env.state.individual_cash("T") == 0.0
+    assert env.compute_tax_advantage() == 0.0
+
+
+def test_hard_env_known_sequence_can_still_succeed():
+    env = HardTaxEnv()
+    env.reset()
+
+    env.step([CONTRIBUTE_ASSET, 0, 0, 0, 0])
+    env.step([CONTRIBUTE_CASH, 1, 0, 0, 0])
+    env.step([TAKE_OUT_LOAN, 0, 0, 0, 2])
+    _, _, terminated, truncated, info = env.step([DISTRIBUTE_CASH, 0, 0, 0, 3])
+
+    tax = info["tax_computation"]
+    assert terminated
+    assert not truncated
+    assert not info["invalid_action"]
+    assert info["tax_advantage"] == 18.0
+    assert tax.baseline_gain == 100.0
+    assert tax.recognized_gain == 10.0
+    assert tax.deferred_gain == 90.0
+    assert tax.tax_savings == 18.0
+
+
+def test_hard_env_decoy_assets_do_not_succeed():
+    for asset_idx in (1, 2, 3):
+        env = HardTaxEnv()
+        env.reset()
+
+        env.step([CONTRIBUTE_ASSET, 0 if asset_idx != 3 else 1, asset_idx, 0, 0])
+        env.step([CONTRIBUTE_CASH, 1, 0, 0, 0])
+        env.step([TAKE_OUT_LOAN, 0, 0, 0, 2])
+        _, _, terminated, _, info = env.step([DISTRIBUTE_CASH, 0, 0, 0, 3])
+
+        assert not terminated
+        assert info["tax_advantage"] == 0.0
 
 
 def test_wrong_guarantor_does_not_get_liability_exclusion():

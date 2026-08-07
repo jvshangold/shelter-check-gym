@@ -1,10 +1,17 @@
+import argparse
 import copy
 import os
+import sys
 from pathlib import Path
 
 import torch
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from dub_irish_dutch.tax_env.env import TaxEnv
+from dub_irish_dutch.tax_env.hard_env import HardTaxEnv
 from dub_irish_dutch.rl.ppo import masked_categorical, ppo_update
 from dub_irish_dutch.rl.rollout import RolloutBuffer
 from dub_irish_dutch.rl.model import PolicyValueNet
@@ -19,6 +26,21 @@ def resolve_device():
     if requested == "cuda":
         print("requested_device_unavailable: cuda; using cpu", flush=True)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def resolve_env_class(env_variant=None):
+    variant = (
+        env_variant
+        or os.environ.get("SHELTER_CHECK_ENV_VARIANT")
+        or os.environ.get("ENV_VARIANT")
+        or "easy"
+    ).strip().lower()
+
+    if variant in {"easy", "default", "scaffolded"}:
+        return TaxEnv
+    if variant in {"hard", "unscaffolded"}:
+        return HardTaxEnv
+    raise ValueError(f"Unknown env variant: {env_variant}")
 
 
 def entity_to_idx(env, entity_id):
@@ -338,13 +360,21 @@ def _write_snapshot_metadata(metadata_path, snapshot, update, snapshot_count):
 SNAPSHOT_DIR = Path(__file__).resolve().parents[1] / "rl_snapshots"
 
 
-def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interval=25):
+def train(
+    total_updates=500,
+    rollout_steps=256,
+    save_snapshots=True,
+    log_interval=25,
+    env_variant=None,
+):
     device = resolve_device()
+    env_class = resolve_env_class(env_variant)
 
-    env = TaxEnv(
+    env = env_class(
         MAX_ENTITIES=4,
         MAX_STEPS=8,
     )
+    print(f"env_variant: {env_class.__name__}", flush=True)
 
     embed_dim = 128
     num_action_types = 3
@@ -518,5 +548,31 @@ def train(total_updates=500, rollout_steps=256, save_snapshots=True, log_interva
                     print(k, sum(v) / len(v), len(v))
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--total-updates", type=int, default=500)
+    parser.add_argument("--rollout-steps", type=int, default=256)
+    parser.add_argument("--log-interval", type=int, default=25)
+    parser.add_argument(
+        "--env-variant",
+        choices=("easy", "hard"),
+        default=None,
+        help="Use the scaffolded easy env or the unscaffolded hard env.",
+    )
+    parser.add_argument(
+        "--no-snapshots",
+        action="store_true",
+        help="Disable best-structure snapshot rendering.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    train()
+    args = parse_args()
+    train(
+        total_updates=args.total_updates,
+        rollout_steps=args.rollout_steps,
+        save_snapshots=not args.no_snapshots,
+        log_interval=args.log_interval,
+        env_variant=args.env_variant,
+    )

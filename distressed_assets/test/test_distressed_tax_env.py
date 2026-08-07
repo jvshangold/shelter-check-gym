@@ -10,6 +10,7 @@ from distressed_assets.tax_env.state import (
 )
 from distressed_assets.tax_env.model import GNN
 from distressed_assets.tax_env.env import MOVE_ASSET, TaxEnv
+from distressed_assets.tax_env.hard_env import HardTaxEnv
 from distressed_assets.rl.train_agent import make_asset_mask, make_trust_mask
 
 
@@ -170,6 +171,63 @@ def test_env_reset():
     assert env.steps == 0
     assert env.prev_tax_advantage == 0.0
     assert obs is not None
+
+
+def test_hard_env_reset_has_distressed_asset_and_decoys():
+    env = HardTaxEnv()
+    obs, info = env.reset()
+
+    assert info == {}
+    assert obs is not None
+    assert env.idx_to_individual == {
+        0: "T",
+        1: "FP_0",
+        2: "FP_1",
+        3: "FP_2",
+    }
+    assert env.idx_to_trust == {0: "root_trust"}
+    assert env.idx_to_asset == {
+        0: "t_cash",
+        1: "distressed_property_0",
+        2: "neutral_property_1",
+        3: "gain_property_2",
+    }
+    assert env.state.assets["distressed_property_0"].basis == 200.0
+    assert env.state.assets["distressed_property_0"].fair_market_value == 40.0
+    assert env.state.assets["neutral_property_1"].basis == 100.0
+    assert env.state.assets["neutral_property_1"].fair_market_value == 100.0
+    assert env.state.assets["gain_property_2"].basis == 40.0
+    assert env.state.assets["gain_property_2"].fair_market_value == 100.0
+
+
+def test_hard_env_known_sequence_can_still_succeed():
+    env = HardTaxEnv()
+    env.reset()
+
+    env.step([0, 0, 0, 0])  # make subtrust
+    env.step([1, 1, 1, 0])  # move distressed property to subtrust
+    env.step([3, 1, 0, 0])  # give vesting power to T
+    _, reward, terminated, _, info = env.step([2, 0, 1, 0])  # sell distressed property
+
+    assert info["raw_tax_savings"] > 0.0
+    assert info["tax_advantage"] == info["raw_tax_savings"]
+    assert reward > 0.0
+    assert terminated
+
+
+def test_hard_env_decoy_assets_do_not_succeed():
+    for asset_idx in (2, 3):
+        env = HardTaxEnv()
+        env.reset()
+
+        env.step([0, 0, 0, 0])  # make subtrust
+        env.step([1, 1, asset_idx, 0])  # move decoy property to subtrust
+        env.step([3, 1, 0, 0])  # give vesting power to T
+        _, _, terminated, _, info = env.step([2, 0, asset_idx, 0])  # sell decoy
+
+        assert info["raw_tax_savings"] <= 0.0
+        assert info["tax_advantage"] <= 0.0
+        assert not terminated
 
 
 def test_env_make_subtrust():

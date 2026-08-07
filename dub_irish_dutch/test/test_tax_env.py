@@ -4,6 +4,7 @@ from dub_irish_dutch.tax_env.render import build_graph
 from dub_irish_dutch.tax_env.state import WorldState, Entity
 from dub_irish_dutch.tax_env.model import GNN
 from dub_irish_dutch.tax_env.env import TaxEnv
+from dub_irish_dutch.tax_env.hard_env import HardTaxEnv
 
 
 def make_root(state: WorldState):
@@ -113,6 +114,38 @@ def test_initialize_env():
     assert env.state.entities["company_1"].parent_id == "root"
     assert env.state.entities["company_1"].tax_residence == "Bermuda"
     assert env.state.entities["company_1"].company_type == "Holding"
+
+
+def test_hard_env_starts_with_only_us_root():
+    env = HardTaxEnv()
+    env.reset()
+
+    assert env.idx_to_entity == {0: "root"}
+    assert list(env.state.entities) == ["root"]
+    assert env.state.entities["root"].tax_residence == "US"
+    assert env.state.entities["root"].company_type == "Operating"
+    assert env.state.ip_owner == "root"
+    assert env.get_action_mask() == [1, 0, 0]
+
+
+def test_hard_env_known_sequence_can_still_succeed():
+    env = HardTaxEnv()
+    env.reset()
+
+    env.step((0, 0, 0, 2, 2, 0))  # company_1: Bermuda holding
+    env.step((0, 0, 0, 4, 4, 1))  # company_2: Germany operating
+    env.step((0, 0, 0, 1, 1, 0))  # company_3: Netherlands holding
+    env.step((2, 0, 1, 0, 0, 0))  # transfer IP to Bermuda
+    env.step((1, 3, 1, 0, 0, 0))  # Netherlands rents from Bermuda
+    _, reward, terminated, _, info = env.step(
+        (1, 2, 3, 0, 0, 0)
+    )  # Germany rents from Netherlands
+
+    assert info["raw_tax_advantage"] > 0.0
+    assert info["tax_advantage"] == info["raw_tax_advantage"]
+    assert info["loophole_gate_complete"]
+    assert reward > 0.0
+    assert terminated
 
 
 def test_take_step():

@@ -6,6 +6,7 @@ from barnes_group.tax_env.env import (
     TRANSFER_CASH,
     TaxEnv,
 )
+from barnes_group.tax_env.hard_env import HardTaxEnv
 from barnes_group.tax_env.model import GNN
 from barnes_group.tax_env.render import build_graph
 from barnes_group.tax_env.state import TaxResidence, WorldState
@@ -140,6 +141,44 @@ def test_direct_repatriation_is_baseline_not_success():
     assert env.state.ledger.total_inclusion == 100.0
     assert env.compute_tax_advantage() == 0.0
     assert not terminated
+    assert not info["invalid_action"]
+
+
+def test_hard_env_starts_with_minimal_feasible_cfc_structure():
+    env = HardTaxEnv()
+    env.reset()
+
+    assert set(env.state.corporations) == {"T", "FSub"}
+    assert env.state.corporations["T"].tax_residence == TaxResidence.US
+    assert env.state.corporations["FSub"].tax_residence == TaxResidence.FOREIGN
+    assert env.state.corporations["FSub"].parent_id == "T"
+    assert env.state.cash_amount("T") == 100.0
+    assert env.state.cash_amount("FSub") == 100.0
+    assert env.state.ownership_percent("T", "FSub") == 100.0
+    assert env.state.ownership_percent("FSub", "FSub") == 100.0
+    assert "DS_1" not in env.state.corporations
+
+
+def test_hard_env_known_sequence_can_still_succeed():
+    env = HardTaxEnv()
+    env.reset()
+
+    env.step([MAKE_SUBCORPORATION, 0, 0, 0, 0])
+    env.step([CONTRIBUTE_FOR_STOCK, 2, 1, 1, 0])
+    _, reward, terminated, truncated, info = env.step([
+        TRANSFER_CASH,
+        2,
+        0,
+        0,
+        0,
+    ])
+
+    assert env.state.cash_amount("T") == 200.0
+    assert env.compute_tax_advantage() == 35.0
+    assert reward == 1.0
+    assert info["normalized_tax_advantage"] == 1.0
+    assert terminated
+    assert not truncated
     assert not info["invalid_action"]
 
 

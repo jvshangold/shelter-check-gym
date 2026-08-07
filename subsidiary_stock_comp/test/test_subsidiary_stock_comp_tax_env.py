@@ -7,6 +7,7 @@ from subsidiary_stock_comp.tax_env.env import (
     LIQUIDATE_CORP,
     TaxEnv,
 )
+from subsidiary_stock_comp.tax_env.hard_env import HARD_FORMATION_SPLITS, HardTaxEnv
 from subsidiary_stock_comp.tax_env.model import GNN
 from subsidiary_stock_comp.tax_env.render import build_graph
 from subsidiary_stock_comp.tax_env.state import TaxResidence, WorldState
@@ -122,6 +123,57 @@ def test_env_can_execute_stock_compensation_strategy():
         and env.state.stock[stock_id].holder_id == "S_0"
     )
     env.step([COMPENSATE_EMPLOYEES, 2, 0, p_stock_idx, 1])
+    obs, reward, terminated, truncated, info = env.step([LIQUIDATE_CORP, 2, 0, 0, 0])
+
+    assert not info["invalid_action"]
+    assert terminated
+    assert not truncated
+    assert info["ordinary_deductions"] == 99.0
+    assert info["capital_losses"] == 99.0
+    assert info["tax_advantage"] == 198.0
+    assert info["normalized_tax_advantage"] == 1.0
+    assert reward > 1.0
+    assert obs is not None
+
+
+def test_hard_env_starts_without_79_21_cash_hint():
+    env = HardTaxEnv()
+    env.reset()
+
+    assert env.state.taxpayer_id == "P"
+    assert env.state.subsidiary_id == "X"
+    assert set(env.state.corporations) == {"P", "X"}
+    assert env.state.corporations["P"].tax_residence == TaxResidence.US
+    assert env.state.corporations["X"].parent_id == "P"
+    assert env.state.cash_amount("P") == 100.0
+    assert env.state.cash_amount("X") == 100.0
+    assert env.state.ownership_percent("P", "X") == 100.0
+    assert env.formation_splits == HARD_FORMATION_SPLITS
+
+
+def test_hard_env_known_sequence_can_still_succeed():
+    env = HardTaxEnv()
+    env.reset()
+
+    split_idx = env.formation_splits.index((79.0, 21.0))
+    env.step([FORM_SUBCORP, 0, 1, 0, split_idx])
+    env.step([BUY_STOCK, 2, 0, 0, 0])
+    p_stock_idx = next(
+        idx
+        for idx, stock_id in env.idx_to_stock.items()
+        if env.state.stock[stock_id].issuer_id == "P"
+        and env.state.stock[stock_id].holder_id == "S_0"
+    )
+    obs, reward, terminated, truncated, info = env.step(
+        [COMPENSATE_EMPLOYEES, 2, 0, p_stock_idx, 1]
+    )
+
+    assert not info["invalid_action"]
+    assert not terminated
+    assert not truncated
+    assert info["ordinary_deductions"] == 99.0
+    assert obs is not None
+
     obs, reward, terminated, truncated, info = env.step([LIQUIDATE_CORP, 2, 0, 0, 0])
 
     assert not info["invalid_action"]

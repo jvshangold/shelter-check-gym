@@ -118,6 +118,7 @@ def run_probe(loophole: str, run_index: int, seed: int, args) -> tuple[dict, lis
             rollout_steps=args.rollout_steps,
             save_snapshots=False,
             log_interval=1,
+            env_variant=args.env_variant,
         )
     elapsed_seconds = time.perf_counter() - started_at
 
@@ -137,6 +138,7 @@ def run_probe(loophole: str, run_index: int, seed: int, args) -> tuple[dict, lis
 
     return {
         "loophole": loophole,
+        "env_variant": args.env_variant,
         "run": run_index,
         "seed": seed,
         "discovered": discovery_row is not None,
@@ -426,6 +428,12 @@ def write_plots(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--loopholes", nargs="+", default=DEFAULT_LOOPHOLES)
+    parser.add_argument(
+        "--env-variant",
+        choices=("easy", "hard"),
+        default="easy",
+        help="Select the scaffolded easy envs or the unscaffolded hard envs.",
+    )
     parser.add_argument("--runs", type=int, default=2)
     parser.add_argument("--updates", type=int, default=100)
     parser.add_argument("--rollout-steps", type=int, default=128)

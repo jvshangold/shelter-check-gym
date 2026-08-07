@@ -359,6 +359,85 @@ def test_env_default_starts_with_facilitators_in_ctf():
     assert env.get_action_mask()[ENTER_STRADDLE] == 1
 
 
+def test_hard_env_starts_without_facilitator_investment():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import ENTER_STRADDLE
+    from straddle_abuse.tax_env.hard_env import HardTaxEnv
+
+    env = HardTaxEnv(MAX_STRADDLES=3)
+
+    env.reset()
+
+    assert env.state.ctf.contribution_of("A") == 0.0
+    assert env.state.ctf.contribution_of("B") == 0.0
+    assert env.state.ctf.contribution_of("T") == 0.0
+    assert env.state.individuals["A"].cash == 500.0
+    assert env.state.individuals["B"].cash == 500.0
+    assert env.get_individual_mask() == [1, 1, 1]
+    assert not env.state.ctf.is_common_trust_fund
+    assert env.get_action_mask()[ENTER_STRADDLE] == 0
+
+
+def test_hard_env_facilitator_investment_enables_straddle_entry():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import ENTER_STRADDLE, INVEST
+    from straddle_abuse.tax_env.hard_env import HardTaxEnv
+
+    env = HardTaxEnv(MAX_STRADDLES=3, FRACTIONS=[1.0])
+
+    env.reset()
+    env.step([INVEST, 0, 0, 1])
+    env.step([INVEST, 0, 0, 2])
+
+    assert env.state.ctf.contribution_of("A") == 500.0
+    assert env.state.ctf.contribution_of("B") == 500.0
+    assert env.state.ctf.is_common_trust_fund
+    assert env.get_action_mask()[ENTER_STRADDLE] == 1
+
+
+def test_hard_env_known_sequence_can_still_succeed():
+    pytest.importorskip("gymnasium")
+    pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    pytest.importorskip("gmpy2")
+
+    from straddle_abuse.tax_env.env import (
+        ENTER_STRADDLE,
+        INVEST,
+        REALIZE_GAIN,
+        REALIZE_LOSS,
+    )
+    from straddle_abuse.tax_env.hard_env import HardTaxEnv
+
+    env = HardTaxEnv(
+        MAX_STRADDLES=3,
+        FRACTIONS=[1.0],
+        STRADDLE_AMOUNTS=[1100.0],
+    )
+
+    env.reset()
+    env.step([INVEST, 0, 0, 1])
+    env.step([INVEST, 0, 0, 2])
+    env.step([ENTER_STRADDLE, 0, 0, 0])
+    env.step([REALIZE_GAIN, 0, 0, 0])
+    env.step([INVEST, 0, 0, 0])
+    _, reward, terminated, truncated, info = env.step([REALIZE_LOSS, 0, 0, 0])
+
+    assert not info["invalid_action"]
+    assert reward > 0.0
+    assert terminated
+    assert not truncated
+    assert info["tax_advantage"] > 30.0
+
+
 def test_env_facilitator_gain_realization_is_neutral_before_taxpayer_enters():
     pytest.importorskip("gymnasium")
     pytest.importorskip("torch")
