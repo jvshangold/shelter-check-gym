@@ -119,23 +119,16 @@ def test_env_reaches_success_threshold_with_four_actions():
     assert tax.tax_savings == 18.0
 
 
-def test_hard_env_reset_has_target_asset_and_decoys():
+def test_hard_env_uses_base_start_without_action_masks():
     env = HardTaxEnv()
     env.reset()
 
+    assert not env.use_action_masks
     assert set(env.state.individuals) == {"T", "Buyer"}
     assert set(env.state.partnerships["P"].partner_ids) == {"T", "Buyer"}
-    assert list(env.state.assets) == [
-        "appreciated_asset",
-        "neutral_asset",
-        "loss_asset",
-        "buyer_asset",
-    ]
+    assert list(env.state.assets) == ["appreciated_asset"]
     assert env.state.assets["appreciated_asset"].owner_id == "T"
     assert env.state.assets["appreciated_asset"].built_in_gain == 100.0
-    assert env.state.assets["neutral_asset"].built_in_gain == 0.0
-    assert env.state.assets["loss_asset"].built_in_gain == 0.0
-    assert env.state.assets["buyer_asset"].owner_id == "Buyer"
     assert env.state.individual_cash("Buyer") == 100.0
     assert env.state.individual_cash("T") == 0.0
     assert env.compute_tax_advantage() == 0.0
@@ -161,18 +154,17 @@ def test_hard_env_known_sequence_can_still_succeed():
     assert tax.tax_savings == 18.0
 
 
-def test_hard_env_decoy_assets_do_not_succeed():
-    for asset_idx in (1, 2, 3):
-        env = HardTaxEnv()
-        env.reset()
+def test_hard_env_invalid_action_is_penalized_without_state_change():
+    env = HardTaxEnv()
+    env.reset()
+    previous_assets = dict(env.state.assets)
 
-        env.step([CONTRIBUTE_ASSET, 0 if asset_idx != 3 else 1, asset_idx, 0, 0])
-        env.step([CONTRIBUTE_CASH, 1, 0, 0, 0])
-        env.step([TAKE_OUT_LOAN, 0, 0, 0, 2])
-        _, _, terminated, _, info = env.step([DISTRIBUTE_CASH, 0, 0, 0, 3])
+    _, reward, terminated, _, info = env.step([CONTRIBUTE_ASSET, 3, 3, 0, 0])
 
-        assert not terminated
-        assert info["tax_advantage"] == 0.0
+    assert env.state.assets == previous_assets
+    assert reward < 0.0
+    assert not terminated
+    assert info["invalid_action"]
 
 
 def test_wrong_guarantor_does_not_get_liability_exclusion():

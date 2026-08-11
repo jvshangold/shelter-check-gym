@@ -116,23 +116,25 @@ def test_initialize_env():
     assert env.state.entities["company_1"].company_type == "Holding"
 
 
-def test_hard_env_starts_with_only_us_root():
+def test_hard_env_uses_base_start_without_action_masks():
     env = HardTaxEnv()
     env.reset()
 
-    assert env.idx_to_entity == {0: "root"}
-    assert list(env.state.entities) == ["root"]
+    assert not env.use_action_masks
+    assert env.idx_to_entity == {
+        0: "root",
+        1: "company_1",
+    }
     assert env.state.entities["root"].tax_residence == "US"
     assert env.state.entities["root"].company_type == "Operating"
-    assert env.state.ip_owner == "root"
-    assert env.get_action_mask() == [1, 0, 0]
+    assert env.state.entities["company_1"].tax_residence == "Bermuda"
+    assert env.state.entities["company_1"].company_type == "Holding"
 
 
 def test_hard_env_known_sequence_can_still_succeed():
     env = HardTaxEnv()
     env.reset()
 
-    env.step((0, 0, 0, 2, 2, 0))  # company_1: Bermuda holding
     env.step((0, 0, 0, 4, 4, 1))  # company_2: Germany operating
     env.step((0, 0, 0, 1, 1, 0))  # company_3: Netherlands holding
     env.step((2, 0, 1, 0, 0, 0))  # transfer IP to Bermuda

@@ -49,7 +49,25 @@ def entity_to_idx(env, entity_id):
             return idx
     raise KeyError(entity_id)
 
+
+def should_use_action_masks(env):
+    return getattr(env, "use_action_masks", True)
+
+
+def entity_mask_size(env):
+    return len(env.idx_to_entity)
+
+
+def make_action_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(3, dtype=torch.bool, device=device)
+    return torch.tensor(env.get_action_mask(), dtype=torch.bool, device=device)
+
+
 def make_rent_licensee_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(entity_mask_size(env), dtype=torch.bool, device=device)
+
     mask = []
 
     for licensee_idx, licensee_id in env.idx_to_entity.items():
@@ -63,6 +81,9 @@ def make_rent_licensee_mask(env, device):
 
 
 def make_rent_licensor_mask(env, licensee_idx, device):
+    if not should_use_action_masks(env):
+        return torch.ones(entity_mask_size(env), dtype=torch.bool, device=device)
+
     licensee_id = env.idx_to_entity[licensee_idx]
 
     mask = []
@@ -73,10 +94,16 @@ def make_rent_licensor_mask(env, licensee_idx, device):
     return torch.tensor(mask, dtype=torch.bool, device=device)
 
 def make_entity_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(entity_mask_size(env), dtype=torch.bool, device=device)
+
     return torch.tensor(env.get_entity_mask(), dtype=torch.bool, device=device)
 
 
 def make_transfer_dst_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(entity_mask_size(env), dtype=torch.bool, device=device)
+
     owner_idx = entity_to_idx(env, env.state.ip_owner)
 
     mask = []
@@ -132,7 +159,7 @@ def sample_action(model, env, obs, device, random_action_prob=0.0):
     entropy = 0.0
     force_uniform = torch.rand((), device=device).item() < random_action_prob
 
-    action_mask = torch.tensor(env.get_action_mask(), dtype=torch.bool, device=device)
+    action_mask = make_action_mask(env, device)
 
     action_type, action_log_prob, action_entropy = sample_from_logits_or_uniform(
         out["action_logits"],

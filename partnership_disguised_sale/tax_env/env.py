@@ -57,6 +57,7 @@ class TaxEnv(gym.Env):
         AMOUNT_BUCKETS=None,
         EXTRA_LOAN_PENALTY=0.01,
         EXTRA_CASH_LOT_PENALTY=0.005,
+        PRINT_INVALID_ACTIONS=False,
     ):
         super().__init__()
 
@@ -77,6 +78,8 @@ class TaxEnv(gym.Env):
         self.success_tax_advantage = SUCCESS_TAX_ADVANTAGE
         self.extra_loan_penalty = EXTRA_LOAN_PENALTY
         self.extra_cash_lot_penalty = EXTRA_CASH_LOT_PENALTY
+        self.print_invalid_actions = PRINT_INVALID_ACTIONS
+        self.use_action_masks = True
 
         self.state = WorldState.initial_state()
         self.idx_to_individual: Dict[int, str] = {}
@@ -118,8 +121,9 @@ class TaxEnv(gym.Env):
             else:
                 raise ValueError("Unknown action type")
         except Exception as e:
-            print("Action:", action)
-            print("Exception:", e)
+            if self.print_invalid_actions:
+                print("Action:", action)
+                print("Exception:", e)
             invalid_action = True
 
         current_tax_advantage = max(0.0, self.compute_tax_advantage())

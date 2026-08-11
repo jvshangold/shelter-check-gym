@@ -59,7 +59,14 @@ def resolve_env_class(env_variant=None):
     raise ValueError(f"Unknown env variant: {env_variant}")
 
 
+def should_use_action_masks(env):
+    return getattr(env, "use_action_masks", True)
+
+
 def make_action_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(4, dtype=torch.bool, device=device)
+
     mask = [False, False, False, False]
 
     mask[TAKE_OUT_LOAN] = len(env.state.loans) < env.max_loans
@@ -86,6 +93,9 @@ def _indexed_values(index, max_count):
 
 
 def make_individual_mask(env, action_type, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_individuals, dtype=torch.bool, device=device)
+
     mask = []
 
     for i in range(env.max_individuals):
@@ -118,6 +128,9 @@ def make_individual_mask(env, action_type, device):
 
 
 def make_asset_mask(env, action_type, individual_idx, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_assets, dtype=torch.bool, device=device)
+
     individual_id = env.idx_to_individual.get(individual_idx)
     mask = []
 
@@ -135,6 +148,9 @@ def make_asset_mask(env, action_type, individual_idx, device):
 
 
 def make_amount_mask(env, action_type, individual_idx, device):
+    if not should_use_action_masks(env):
+        return torch.ones(len(env.amount_buckets), dtype=torch.bool, device=device)
+
     individual_id = env.idx_to_individual.get(individual_idx)
     mask = []
 

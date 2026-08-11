@@ -31,6 +31,7 @@ class TaxEnv(gym.Env):
         JURISDICTIONS=5,
         MAX_STEPS=10,
         START_WITH_BERMUDA_HOLDING=True,
+        PRINT_INVALID_ACTIONS=False,
     ):
         super().__init__()
 
@@ -67,6 +68,8 @@ class TaxEnv(gym.Env):
         self.max_steps = MAX_STEPS
         self.max_entities = MAX_ENTITIES
         self.start_with_bermuda_holding = START_WITH_BERMUDA_HOLDING
+        self.print_invalid_actions = PRINT_INVALID_ACTIONS
+        self.use_action_masks = True
 
         self.idx_to_entity: Dict[int, str] = {}
         self.idx_to_jurisdiction: Dict[int, str] = {
@@ -138,8 +141,9 @@ class TaxEnv(gym.Env):
                 raise ValueError("Unknown action type")
 
         except Exception as e:
-            print("Action:", action)
-            print("Exception:", e)
+            if self.print_invalid_actions:
+                print("Action:", action)
+                print("Exception:", e)
             invalid_action = True
 
         current_profit = self.money_to_float(self.compute_profit())

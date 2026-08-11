@@ -7,7 +7,7 @@ from subsidiary_stock_comp.tax_env.env import (
     LIQUIDATE_CORP,
     TaxEnv,
 )
-from subsidiary_stock_comp.tax_env.hard_env import HARD_FORMATION_SPLITS, HardTaxEnv
+from subsidiary_stock_comp.tax_env.hard_env import HardTaxEnv
 from subsidiary_stock_comp.tax_env.model import GNN
 from subsidiary_stock_comp.tax_env.render import build_graph
 from subsidiary_stock_comp.tax_env.state import TaxResidence, WorldState
@@ -136,27 +136,26 @@ def test_env_can_execute_stock_compensation_strategy():
     assert obs is not None
 
 
-def test_hard_env_starts_without_79_21_cash_hint():
+def test_hard_env_uses_base_start_without_action_masks():
     env = HardTaxEnv()
     env.reset()
 
+    assert not env.use_action_masks
     assert env.state.taxpayer_id == "P"
     assert env.state.subsidiary_id == "X"
     assert set(env.state.corporations) == {"P", "X"}
     assert env.state.corporations["P"].tax_residence == TaxResidence.US
     assert env.state.corporations["X"].parent_id == "P"
-    assert env.state.cash_amount("P") == 100.0
-    assert env.state.cash_amount("X") == 100.0
+    assert env.state.cash_amount("P") == 79.0
+    assert env.state.cash_amount("X") == 21.0
     assert env.state.ownership_percent("P", "X") == 100.0
-    assert env.formation_splits == HARD_FORMATION_SPLITS
 
 
 def test_hard_env_known_sequence_can_still_succeed():
     env = HardTaxEnv()
     env.reset()
 
-    split_idx = env.formation_splits.index((79.0, 21.0))
-    env.step([FORM_SUBCORP, 0, 1, 0, split_idx])
+    env.step([FORM_SUBCORP, 0, 1, 0, 0])
     env.step([BUY_STOCK, 2, 0, 0, 0])
     p_stock_idx = next(
         idx

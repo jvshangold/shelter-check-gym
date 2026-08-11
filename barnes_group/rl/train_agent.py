@@ -55,7 +55,14 @@ def resolve_env_class(env_variant=None):
     raise ValueError(f"Unknown env variant: {env_variant}")
 
 
+def should_use_action_masks(env):
+    return getattr(env, "use_action_masks", True)
+
+
 def make_action_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(3, dtype=torch.bool, device=device)
+
     mask = [False, False, False]
 
     mask[MAKE_SUBCORPORATION] = len(env.state.corporations) < env.max_corporations
@@ -84,6 +91,9 @@ def _indexed_values(index, max_count):
 
 
 def make_corp_a_mask(env, action_type, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_corporations, dtype=torch.bool, device=device)
+
     mask = []
 
     for i in range(env.max_corporations):
@@ -121,6 +131,9 @@ def make_corp_a_mask(env, action_type, device):
 
 
 def make_corp_b_mask(env, action_type, device, corp_a_idx=None, stock_idx=None):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_corporations, dtype=torch.bool, device=device)
+
     mask = []
     corp_a_id = None if corp_a_idx is None else env.idx_to_corporation.get(corp_a_idx)
     stock_id = None if stock_idx is None else env.idx_to_stock.get(stock_idx)
@@ -179,6 +192,9 @@ def make_corp_b_mask(env, action_type, device, corp_a_idx=None, stock_idx=None):
 
 
 def make_stock_mask(env, action_type, device, corp_a_idx=None, corp_b_idx=None):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_stocks, dtype=torch.bool, device=device)
+
     mask = []
     corp_a_id = None if corp_a_idx is None else env.idx_to_corporation.get(corp_a_idx)
     corp_b_id = None if corp_b_idx is None else env.idx_to_corporation.get(corp_b_idx)
@@ -213,6 +229,9 @@ def make_stock_mask(env, action_type, device, corp_a_idx=None, corp_b_idx=None):
 
 def make_amount_mask(env, action_type, device, corp_a_idx=None, corp_b_idx=None, stock_idx=None):
     max_amounts = max(len(env.cash_amounts), len(env.stock_percents))
+    if not should_use_action_masks(env):
+        return torch.ones(max_amounts, dtype=torch.bool, device=device)
+
     mask = []
     corp_a_id = None if corp_a_idx is None else env.idx_to_corporation.get(corp_a_idx)
     corp_b_id = None if corp_b_idx is None else env.idx_to_corporation.get(corp_b_idx)

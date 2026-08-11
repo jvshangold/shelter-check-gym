@@ -144,10 +144,11 @@ def test_direct_repatriation_is_baseline_not_success():
     assert not info["invalid_action"]
 
 
-def test_hard_env_starts_with_minimal_feasible_cfc_structure():
+def test_hard_env_uses_base_start_without_action_masks():
     env = HardTaxEnv()
     env.reset()
 
+    assert not env.use_action_masks
     assert set(env.state.corporations) == {"T", "FSub"}
     assert env.state.corporations["T"].tax_residence == TaxResidence.US
     assert env.state.corporations["FSub"].tax_residence == TaxResidence.FOREIGN
@@ -156,7 +157,6 @@ def test_hard_env_starts_with_minimal_feasible_cfc_structure():
     assert env.state.cash_amount("FSub") == 100.0
     assert env.state.ownership_percent("T", "FSub") == 100.0
     assert env.state.ownership_percent("FSub", "FSub") == 100.0
-    assert "DS_1" not in env.state.corporations
 
 
 def test_hard_env_known_sequence_can_still_succeed():

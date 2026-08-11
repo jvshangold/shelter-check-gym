@@ -173,36 +173,67 @@ def test_env_reset():
     assert obs is not None
 
 
-def test_hard_env_reset_has_distressed_asset_and_decoys():
+def test_hard_env_reset_uses_base_state_without_action_masks():
     env = HardTaxEnv()
     obs, info = env.reset()
 
     assert info == {}
     assert obs is not None
-    assert env.idx_to_individual == {
-        0: "T",
-        1: "FP_0",
-        2: "FP_1",
-        3: "FP_2",
-    }
+    assert not env.use_action_masks
+    assert env.idx_to_individual == {0: "T"}
     assert env.idx_to_trust == {0: "root_trust"}
-    assert env.idx_to_asset == {
-        0: "t_cash",
-        1: "distressed_property_0",
-        2: "neutral_property_1",
-        3: "gain_property_2",
-    }
-    assert env.state.assets["distressed_property_0"].basis == 200.0
-    assert env.state.assets["distressed_property_0"].fair_market_value == 40.0
-    assert env.state.assets["neutral_property_1"].basis == 100.0
-    assert env.state.assets["neutral_property_1"].fair_market_value == 100.0
-    assert env.state.assets["gain_property_2"].basis == 40.0
-    assert env.state.assets["gain_property_2"].fair_market_value == 100.0
+    assert env.idx_to_asset == {0: "t_cash"}
+
+
+def test_hard_env_masks_are_unmasked():
+    from distressed_assets.rl.train_agent import (
+        make_action_mask,
+        make_asset_mask,
+        make_individual_mask,
+        make_trust_mask,
+    )
+
+    env = HardTaxEnv(MAX_TRUSTS=5, MAX_ASSETS=5, MAX_INDIVIDUALS=4)
+    env.reset()
+    device = torch.device("cpu")
+
+    assert make_action_mask(env, device).tolist() == [True, True, True, True]
+    assert make_trust_mask(env, MOVE_ASSET, device).tolist() == [
+        True,
+        True,
+        True,
+        True,
+        True,
+    ]
+    assert make_asset_mask(env, MOVE_ASSET, device).tolist() == [
+        True,
+        True,
+        True,
+        True,
+        True,
+    ]
+    assert make_individual_mask(env, 0, device).tolist() == [
+        True,
+        True,
+        True,
+        True,
+    ]
 
 
 def test_hard_env_known_sequence_can_still_succeed():
     env = HardTaxEnv()
     env.reset()
+
+    env.state.add_individual("FP_0", TaxResidence.FOREIGN)
+    env.state.add_asset(
+        asset_id="distressed_asset_0",
+        kind=AssetKind.PROPERTY,
+        basis=100.0,
+        fair_market_value=20.0,
+        owner_type=OwnerType.INDIVIDUAL,
+        owner_id="FP_0",
+    )
+    env._refresh_indices()
 
     env.step([0, 0, 0, 0])  # make subtrust
     env.step([1, 1, 1, 0])  # move distressed property to subtrust
@@ -215,19 +246,34 @@ def test_hard_env_known_sequence_can_still_succeed():
     assert terminated
 
 
-def test_hard_env_decoy_assets_do_not_succeed():
-    for asset_idx in (2, 3):
-        env = HardTaxEnv()
-        env.reset()
+def test_hard_env_invalid_action_leaves_state_and_penalizes():
+    env = HardTaxEnv()
+    env.reset()
 
-        env.step([0, 0, 0, 0])  # make subtrust
-        env.step([1, 1, asset_idx, 0])  # move decoy property to subtrust
-        env.step([3, 1, 0, 0])  # give vesting power to T
-        _, _, terminated, _, info = env.step([2, 0, asset_idx, 0])  # sell decoy
+    before_assets = copy_state_assets(env.state)
+    before_trusts = dict(env.state.trusts)
+    _, reward, terminated, truncated, info = env.step([MOVE_ASSET, 4, 4, 3])
 
-        assert info["raw_tax_savings"] <= 0.0
-        assert info["tax_advantage"] <= 0.0
-        assert not terminated
+    assert info["invalid_action"]
+    assert reward < 0.0
+    assert not terminated
+    assert not truncated
+    assert copy_state_assets(env.state) == before_assets
+    assert dict(env.state.trusts) == before_trusts
+
+
+def copy_state_assets(state):
+    return {
+        asset_id: (
+            asset.kind,
+            asset.basis,
+            asset.fair_market_value,
+            asset.owner_type,
+            asset.owner_id,
+            asset.sale_price,
+        )
+        for asset_id, asset in state.assets.items()
+    }
 
 
 def test_env_make_subtrust():

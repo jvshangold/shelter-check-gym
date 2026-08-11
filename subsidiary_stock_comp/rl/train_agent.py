@@ -58,7 +58,14 @@ def resolve_env_class(env_variant=None):
     raise ValueError(f"Unknown env variant: {env_variant}")
 
 
+def should_use_action_masks(env):
+    return getattr(env, "use_action_masks", True)
+
+
 def make_action_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(4, dtype=torch.bool, device=device)
+
     mask = [False, False, False, False]
 
     mask[FORM_SUBCORP] = any(
@@ -93,6 +100,9 @@ def _indexed_values(index, max_count):
 
 
 def make_corp_a_mask(env, action_type, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_corporations, dtype=torch.bool, device=device)
+
     mask = []
 
     for i in range(env.max_corporations):
@@ -143,6 +153,9 @@ def make_corp_a_mask(env, action_type, device):
 
 
 def make_corp_b_mask(env, action_type, corp_a_idx, stock_idx, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_corporations, dtype=torch.bool, device=device)
+
     corp_a_id = env.idx_to_corporation.get(corp_a_idx)
     stock_id = env.idx_to_stock.get(stock_idx)
     mask = []
@@ -204,6 +217,9 @@ def make_corp_b_mask(env, action_type, corp_a_idx, stock_idx, device):
 
 
 def make_stock_mask(env, action_type, holder_idx, service_recipient_idx, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_stocks, dtype=torch.bool, device=device)
+
     holder_id = env.idx_to_corporation.get(holder_idx)
     service_recipient_id = env.idx_to_corporation.get(service_recipient_idx)
     mask = []
@@ -231,12 +247,16 @@ def make_stock_mask(env, action_type, holder_idx, service_recipient_idx, device)
 
 
 def make_amount_mask(env, action_type, corp_a_idx, corp_b_idx, stock_idx, device):
+    max_amounts = max(len(env.cash_amounts), len(env.formation_splits))
+    if not should_use_action_masks(env):
+        return torch.ones(max_amounts, dtype=torch.bool, device=device)
+
     corp_a_id = env.idx_to_corporation.get(corp_a_idx)
     corp_b_id = env.idx_to_corporation.get(corp_b_idx)
     stock_id = env.idx_to_stock.get(stock_idx)
     mask = []
 
-    for i in range(max(len(env.cash_amounts), len(env.formation_splits))):
+    for i in range(max_amounts):
         if action_type == FORM_SUBCORP:
             mask.append(
                 i < len(env.formation_splits)
@@ -511,6 +531,12 @@ def has_available_action(env, device):
     return bool(make_action_mask(env, device).any().item())
 
 
+def indexed_or_label(values, idx):
+    if 0 <= idx < len(values):
+        return values[idx]
+    return f"idx_{idx}"
+
+
 def describe_env_action(env, env_action):
     action_type, corp_a_idx, corp_b_idx, stock_idx, amount_idx = env_action
     action_name = ACTION_NAMES.get(action_type, f"unknown_{action_type}")
@@ -518,7 +544,13 @@ def describe_env_action(env, env_action):
     if action_type == FORM_SUBCORP:
         contributor_a = env.idx_to_corporation.get(corp_a_idx, f"idx_{corp_a_idx}")
         contributor_b = env.idx_to_corporation.get(corp_b_idx, f"idx_{corp_b_idx}")
-        contribution_a, contribution_b = env.formation_splits[amount_idx]
+        split = indexed_or_label(env.formation_splits, amount_idx)
+        if isinstance(split, str):
+            return (
+                f"{action_name}("
+                f"{contributor_a}=idx_{amount_idx}, {contributor_b}=idx_{amount_idx})"
+            )
+        contribution_a, contribution_b = split
         return (
             f"{action_name}("
             f"{contributor_a}={contribution_a}, {contributor_b}={contribution_b})"
@@ -527,14 +559,14 @@ def describe_env_action(env, env_action):
     if action_type == BUY_STOCK:
         buyer = env.idx_to_corporation.get(corp_a_idx, f"idx_{corp_a_idx}")
         issuer = env.idx_to_corporation.get(corp_b_idx, f"idx_{corp_b_idx}")
-        amount = env.cash_amounts[amount_idx]
+        amount = indexed_or_label(env.cash_amounts, amount_idx)
         return f"{action_name}(buyer={buyer}, issuer={issuer}, amount={amount})"
 
     if action_type == COMPENSATE_EMPLOYEES:
         holder = env.idx_to_corporation.get(corp_a_idx, f"idx_{corp_a_idx}")
         service_recipient = env.idx_to_corporation.get(corp_b_idx, f"idx_{corp_b_idx}")
         stock_id = env.idx_to_stock.get(stock_idx, f"idx_{stock_idx}")
-        amount = env.cash_amounts[amount_idx]
+        amount = indexed_or_label(env.cash_amounts, amount_idx)
         return (
             f"{action_name}("
             f"holder={holder}, service_recipient={service_recipient}, "

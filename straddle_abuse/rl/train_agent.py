@@ -58,11 +58,21 @@ def resolve_env_class(env_variant=None):
     raise ValueError(f"Unknown env variant: {env_variant}")
 
 
+def should_use_action_masks(env):
+    return getattr(env, "use_action_masks", True)
+
+
 def make_action_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(4, dtype=torch.bool, device=device)
+
     return torch.tensor(env.get_action_mask(), dtype=torch.bool, device=device)
 
 
 def make_straddle_mask(env, action_type, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_straddles, dtype=torch.bool, device=device)
+
     if action_type == REALIZE_GAIN:
         mask = env.get_straddle_mask(StraddleLegKind.GAIN)
     elif action_type == REALIZE_LOSS:
@@ -74,6 +84,9 @@ def make_straddle_mask(env, action_type, device):
 
 
 def make_fraction_mask(env, action_type, device):
+    if not should_use_action_masks(env):
+        return torch.ones(len(env.fractions), dtype=torch.bool, device=device)
+
     if action_type in {ENTER_STRADDLE, REALIZE_GAIN, REALIZE_LOSS, INVEST}:
         mask = env.get_fraction_mask()
     else:
@@ -83,6 +96,9 @@ def make_fraction_mask(env, action_type, device):
 
 
 def make_individual_mask(env, action_type, device):
+    if not should_use_action_masks(env):
+        return torch.ones(len(env.individual_ids), dtype=torch.bool, device=device)
+
     if action_type == INVEST:
         mask = env.get_individual_mask()
     else:

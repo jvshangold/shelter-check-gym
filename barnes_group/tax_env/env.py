@@ -59,6 +59,7 @@ class TaxEnv(gym.Env):
         self.initial_t_cash = INITIAL_T_CASH
         self.initial_fsub_cash = INITIAL_FSUB_CASH
         self.print_invalid_actions = PRINT_INVALID_ACTIONS
+        self.use_action_masks = True
 
         self.state = WorldState.initial_state(
             t_cash=self.initial_t_cash,

@@ -59,6 +59,9 @@ def resolve_env_class(env_variant=None):
 
 
 def make_action_mask(env, device):
+    if not should_use_action_masks(env):
+        return torch.ones(4, dtype=torch.bool, device=device)
+
     mask = [False, False, False, False]
 
     mask[MAKE_SUBTRUST] = len(env.state.trusts) < env.max_trusts
@@ -83,11 +86,18 @@ def make_action_mask(env, device):
     return torch.tensor(mask, dtype=torch.bool, device=device)
 
 
+def should_use_action_masks(env):
+    return getattr(env, "use_action_masks", True)
+
+
 def _indexed_values(index, max_count):
     return [index[i] for i in range(max_count) if i in index]
 
 
 def make_trust_mask(env, action_type, device, asset_idx=None):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_trusts, dtype=torch.bool, device=device)
+
     mask = []
     asset_id = None
     if asset_idx is not None:
@@ -127,6 +137,9 @@ def make_trust_mask(env, action_type, device, asset_idx=None):
 
 
 def make_asset_mask(env, action_type, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_assets, dtype=torch.bool, device=device)
+
     mask = []
 
     for i in range(env.max_assets):
@@ -150,6 +163,9 @@ def make_asset_mask(env, action_type, device):
 
 
 def make_individual_mask(env, trust_idx, device):
+    if not should_use_action_masks(env):
+        return torch.ones(env.max_individuals, dtype=torch.bool, device=device)
+
     trust_id = env.idx_to_trust[trust_idx]
     mask = []
 

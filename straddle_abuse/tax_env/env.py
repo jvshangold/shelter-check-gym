@@ -40,6 +40,7 @@ class TaxEnv(gym.Env):
         SUCCESS_TAX_ADVANTAGE=30.0,
         INITIAL_FACILITATOR_INVESTMENT=300.0,
         TAXPAYER_ORDINARY_INCOME=100.0,
+        PRINT_INVALID_ACTIONS=False,
     ):
         super().__init__()
 
@@ -62,6 +63,8 @@ class TaxEnv(gym.Env):
         self.success_tax_advantage = SUCCESS_TAX_ADVANTAGE
         self.initial_facilitator_investment = INITIAL_FACILITATOR_INVESTMENT
         self.taxpayer_ordinary_income = TAXPAYER_ORDINARY_INCOME
+        self.print_invalid_actions = PRINT_INVALID_ACTIONS
+        self.use_action_masks = True
 
         self.state = WorldState.initial_state(
             facilitator_investment=self.initial_facilitator_investment,
@@ -100,8 +103,9 @@ class TaxEnv(gym.Env):
                 raise ValueError("Unknown action type")
 
         except Exception as e:
-            print("Action:", action)
-            print("Exception:", e)
+            if self.print_invalid_actions:
+                print("Action:", action)
+                print("Exception:", e)
             invalid_action = True
 
         current_tax_reduction = self.compute_tax_reduction()

@@ -359,30 +359,33 @@ def test_env_default_starts_with_facilitators_in_ctf():
     assert env.get_action_mask()[ENTER_STRADDLE] == 1
 
 
-def test_hard_env_starts_without_facilitator_investment():
+def test_hard_env_uses_base_start_without_action_masks():
     pytest.importorskip("gymnasium")
     pytest.importorskip("torch")
     pytest.importorskip("torch_geometric")
     pytest.importorskip("gmpy2")
 
-    from straddle_abuse.tax_env.env import ENTER_STRADDLE
+    from straddle_abuse.rl.train_agent import make_individual_mask
+    from straddle_abuse.tax_env.env import ENTER_STRADDLE, INVEST
     from straddle_abuse.tax_env.hard_env import HardTaxEnv
 
     env = HardTaxEnv(MAX_STRADDLES=3)
 
     env.reset()
 
-    assert env.state.ctf.contribution_of("A") == 0.0
-    assert env.state.ctf.contribution_of("B") == 0.0
+    assert not env.use_action_masks
+    assert env.state.ctf.contribution_of("A") == 300.0
+    assert env.state.ctf.contribution_of("B") == 300.0
     assert env.state.ctf.contribution_of("T") == 0.0
-    assert env.state.individuals["A"].cash == 500.0
-    assert env.state.individuals["B"].cash == 500.0
-    assert env.get_individual_mask() == [1, 1, 1]
-    assert not env.state.ctf.is_common_trust_fund
-    assert env.get_action_mask()[ENTER_STRADDLE] == 0
+    assert env.state.individuals["A"].cash == 0.0
+    assert env.state.individuals["B"].cash == 0.0
+    assert env.get_individual_mask() == [1, 0, 0]
+    assert make_individual_mask(env, INVEST, "cpu").tolist() == [True, True, True]
+    assert env.state.ctf.is_common_trust_fund
+    assert env.get_action_mask()[ENTER_STRADDLE] == 1
 
 
-def test_hard_env_facilitator_investment_enables_straddle_entry():
+def test_hard_env_can_enter_straddle_from_base_start():
     pytest.importorskip("gymnasium")
     pytest.importorskip("torch")
     pytest.importorskip("torch_geometric")
@@ -394,13 +397,12 @@ def test_hard_env_facilitator_investment_enables_straddle_entry():
     env = HardTaxEnv(MAX_STRADDLES=3, FRACTIONS=[1.0])
 
     env.reset()
-    env.step([INVEST, 0, 0, 1])
-    env.step([INVEST, 0, 0, 2])
+    env.step([ENTER_STRADDLE, 0, 0, 0])
 
-    assert env.state.ctf.contribution_of("A") == 500.0
-    assert env.state.ctf.contribution_of("B") == 500.0
+    assert env.state.ctf.contribution_of("A") == 300.0
+    assert env.state.ctf.contribution_of("B") == 300.0
     assert env.state.ctf.is_common_trust_fund
-    assert env.get_action_mask()[ENTER_STRADDLE] == 1
+    assert len(env.state.straddle_legs) == 2
 
 
 def test_hard_env_known_sequence_can_still_succeed():

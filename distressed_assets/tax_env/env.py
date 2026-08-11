@@ -32,6 +32,7 @@ class TaxEnv(gym.Env):
         MAX_RANDOM_FOREIGN_PARTIES=None,
         EXTRA_TRUST_PENALTY=0.01,
         TRUST_DEPTH_PENALTY=0.02,
+        PRINT_INVALID_ACTIONS=False,
     ):
         super().__init__()
 
@@ -52,6 +53,8 @@ class TaxEnv(gym.Env):
         self.max_random_foreign_parties = MAX_RANDOM_FOREIGN_PARTIES
         self.extra_trust_penalty = EXTRA_TRUST_PENALTY
         self.trust_depth_penalty = TRUST_DEPTH_PENALTY
+        self.print_invalid_actions = PRINT_INVALID_ACTIONS
+        self.use_action_masks = True
 
         self.state = WorldState.initial_state()
 
@@ -88,8 +91,9 @@ class TaxEnv(gym.Env):
                 raise ValueError("Unknown action type")
 
         except Exception as e:
-            print("Action:", action)
-            print("Exception:", e)
+            if self.print_invalid_actions:
+                print("Action:", action)
+                print("Exception:", e)
             invalid_action = True
 
         current_raw_savings = self.compute_raw_tax_savings()

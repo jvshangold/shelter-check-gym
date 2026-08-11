@@ -66,6 +66,7 @@ class TaxEnv(gym.Env):
         self.success_advantage = SUCCESS_ADVANTAGE
         self.success_bonus = SUCCESS_BONUS
         self.print_invalid_actions = PRINT_INVALID_ACTIONS
+        self.use_action_masks = True
 
         self.state = WorldState.initial_state()
         self.idx_to_corporation: Dict[int, str] = {}
