@@ -70,6 +70,7 @@ class TaxEnv(gym.Env):
         self.start_with_bermuda_holding = START_WITH_BERMUDA_HOLDING
         self.print_invalid_actions = PRINT_INVALID_ACTIONS
         self.use_action_masks = True
+        self.action_reward_penalty = 0.0
 
         self.idx_to_entity: Dict[int, str] = {}
         self.idx_to_jurisdiction: Dict[int, str] = {
@@ -173,6 +174,7 @@ class TaxEnv(gym.Env):
             )
             - self.compute_complexity_penalty()
         )
+        reward -= self.action_reward_penalty
         self.prev_normalized_tax_advantage = normalized_tax_advantage
         self.prev_normalized_raw_tax_advantage = normalized_raw_tax_advantage
 
@@ -333,6 +335,7 @@ class TaxEnv(gym.Env):
             )
             - self.compute_complexity_penalty()
         )
+        reward -= self.action_reward_penalty
         self.prev_normalized_tax_advantage = normalized_tax_advantage
         self.prev_normalized_raw_tax_advantage = normalized_raw_tax_advantage
         return reward

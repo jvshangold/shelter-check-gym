@@ -55,6 +55,7 @@ class TaxEnv(gym.Env):
         self.trust_depth_penalty = TRUST_DEPTH_PENALTY
         self.print_invalid_actions = PRINT_INVALID_ACTIONS
         self.use_action_masks = True
+        self.action_reward_penalty = 0.0
 
         self.state = WorldState.initial_state()
 
@@ -104,6 +105,7 @@ class TaxEnv(gym.Env):
             - self.prev_tax_advantage
             - self.compute_complexity_penalty()
         )
+        reward -= self.action_reward_penalty
 
         self.prev_tax_advantage = current_tax_advantage
 
@@ -192,6 +194,7 @@ class TaxEnv(gym.Env):
             - self.prev_tax_advantage
             - self.compute_complexity_penalty()
         )
+        reward -= self.action_reward_penalty
         self.prev_tax_advantage = current_tax_advantage
         return reward
 

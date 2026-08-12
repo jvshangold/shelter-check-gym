@@ -175,7 +175,8 @@ def test_hard_env_known_sequence_can_still_succeed():
 
     assert env.state.cash_amount("T") == 200.0
     assert env.compute_tax_advantage() == 35.0
-    assert reward == 1.0
+    assert env.action_reward_penalty == 0.1
+    assert reward == 0.9
     assert info["normalized_tax_advantage"] == 1.0
     assert terminated
     assert not truncated

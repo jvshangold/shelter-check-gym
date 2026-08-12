@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=hard_nomask_loophole_metrics
+#SBATCH --job-name=hard_nomask_actioncost_metrics
 #SBATCH --output=slurm_logs/%x_%A_%a.out
 #SBATCH --error=slurm_logs/%x_%A_%a.err
 #SBATCH --partition=P100
@@ -38,7 +38,7 @@ else
 fi
 
 RUN_ID="${SLURM_JOB_ID:-local}_${SLURM_ARRAY_TASK_ID:-single}_$(date +%Y%m%d_%H%M%S)"
-OUTPUT_DIR="experiments/results/loophole_learning_metrics_hard_nomask_${SELECTED_LOOPHOLES}_${RUN_ID}"
+OUTPUT_DIR="experiments/results/loophole_learning_metrics_hard_nomask_actioncost_${SELECTED_LOOPHOLES}_${RUN_ID}"
 RUNS="${RUNS:-10}"
 UPDATES="${UPDATES:-100}"
 ROLLOUT_STEPS="${ROLLOUT_STEPS:-128}"
@@ -50,7 +50,7 @@ export SHELTER_CHECK_DEVICE
 echo "Job ${SLURM_JOB_ID:-local} started on $(hostname) at $(date)"
 echo "Output directory: ${OUTPUT_DIR}"
 echo "Loopholes: ${SELECTED_LOOPHOLES}"
-echo "Environment variant: hard (base starts, action masks disabled)"
+echo "Environment variant: hard (base starts, action masks disabled, per-action cost enabled)"
 echo "Runs: ${RUNS}; updates: ${UPDATES}; rollout steps: ${ROLLOUT_STEPS}; tail updates: ${TAIL_UPDATES}"
 echo "SHELTER_CHECK_DEVICE: ${SHELTER_CHECK_DEVICE}; stream train logs: ${STREAM_TRAIN_LOGS}"
 

@@ -67,6 +67,7 @@ class TaxEnv(gym.Env):
         self.success_bonus = SUCCESS_BONUS
         self.print_invalid_actions = PRINT_INVALID_ACTIONS
         self.use_action_masks = True
+        self.action_reward_penalty = 0.0
 
         self.state = WorldState.initial_state()
         self.idx_to_corporation: Dict[int, str] = {}
@@ -112,6 +113,7 @@ class TaxEnv(gym.Env):
             - self.prev_normalized_tax_advantage
             - self.compute_complexity_penalty()
         )
+        reward -= self.action_reward_penalty
         self.prev_normalized_tax_advantage = current_normalized_advantage
 
         if invalid_action:

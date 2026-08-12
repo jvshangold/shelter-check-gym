@@ -1,4 +1,4 @@
-"""Combine no-mask hard-mode loophole metrics outputs and write aggregate plots."""
+"""Combine no-mask hard-mode action-cost metrics outputs and write aggregate plots."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from experiments.loophole_learning_metrics import (  # noqa: E402
 
 
 DEFAULT_OUTPUT_DIR = Path(
-    "experiments/results/loophole_learning_metrics_hard_nomask_combined"
+    "experiments/results/loophole_learning_metrics_hard_nomask_actioncost_combined"
 )
 
 
@@ -47,7 +47,7 @@ def read_csv_rows(path: Path) -> list[dict]:
 def default_result_dirs(results_root: Path, output_dir: Path) -> list[Path]:
     return sorted(
         path
-        for path in results_root.glob("loophole_learning_metrics_hard_nomask_*")
+        for path in results_root.glob("loophole_learning_metrics_hard_nomask_actioncost_*")
         if path != output_dir
         and (path / "runs.csv").exists()
         and (path / "update_metrics.csv").exists()
@@ -86,7 +86,7 @@ def main() -> None:
     if not result_dirs:
         raise SystemExit(
             "No hard result directories found. Expected directories matching "
-            "'experiments/results/loophole_learning_metrics_hard_nomask_*'."
+            "'experiments/results/loophole_learning_metrics_hard_nomask_actioncost_*'."
         )
 
     runs = []
