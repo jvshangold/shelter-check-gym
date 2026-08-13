@@ -1,0 +1,2 @@
+avg_steps_to_first_discovery,avg_tail_reward_per_episode,avg_tail_success_rate,discovery_rate,loophole,runs,steps_to_first_discovery_cv,steps_to_first_discovery_stddev,tail_reward_cv_across_runs,tail_reward_stddev_across_runs,tail_success_rate_stddev_across_runs
+4800.0,-4.338341357514617,0.0,0.2,dub_irish_dutch,10,0.3582674358011841,1719.6836918456836,0.10587370081711851,0.45931625492803435,0.0
